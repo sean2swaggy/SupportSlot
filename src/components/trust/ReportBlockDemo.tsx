@@ -1,67 +1,37 @@
-"use client";
+import Link from "next/link";
 
-import { useState } from "react";
-import Modal from "@/components/ui/Modal";
-import Button from "@/components/ui/Button";
-
+// Previously an interactive "Report a listing" / "Block a user" modal that
+// showed a fake "Report submitted — reviewed within 24 hours" / "User
+// blocked" confirmation on click, with no backend call behind it at all —
+// found during a pre-launch security/trust audit. That's a false safety
+// claim on the one page whose whole purpose is describing how users are
+// protected: someone who "reported" a scammer or "blocked" a harasser here
+// had done neither, while believing they had.
+//
+// The real reporting/blocking backend does exist (reports and
+// promoter_blocks tables, RLS-scoped to the reporting artist — see
+// blockPromoter/reportUser in src/lib/queries.ts) but only in the
+// signed-in app, attached to a specific promoter/message/request — this
+// page is public and has no specific listing in view, so there's nothing
+// concrete for a contextless demo here to actually submit. Pointing to the
+// real, working entry points instead of faking one.
 export default function ReportBlockDemo() {
-  const [modal, setModal] = useState<"report" | "block" | null>(null);
-  const [done, setDone] = useState(false);
-
-  const close = () => {
-    setModal(null);
-    setTimeout(() => setDone(false), 300);
-  };
-
   return (
-    <div className="flex flex-wrap gap-3">
-      <Button variant="outline" size="md" onClick={() => setModal("report")}>
-        Report a listing
-      </Button>
-      <Button variant="outline" size="md" onClick={() => setModal("block")}>
-        Block a user
-      </Button>
-
-      <Modal open={!!modal} onClose={close}>
-        <div className="p-6 sm:p-7">
-          {done ? (
-            <div className="text-center py-4">
-              <p className="font-display text-2xl">
-                {modal === "report" ? "Report submitted" : "User blocked"}
-              </p>
-              <p className="mt-2 text-sm text-paper-dim">
-                {modal === "report"
-                  ? "Our trust & safety team reviews every report within 24 hours."
-                  : "They can no longer message you or view your profile."}
-              </p>
-              <Button size="md" className="mt-6" onClick={close}>
-                Done
-              </Button>
-            </div>
-          ) : (
-            <>
-              <p className="font-display text-2xl">
-                {modal === "report" ? "Report this listing" : "Block this user"}
-              </p>
-              <p className="mt-2 text-sm text-paper-dim">
-                {modal === "report"
-                  ? "Tell us what's wrong — pay-to-play requests, misleading information, or anything that breaks our policies."
-                  : "They won't be notified. You can unblock them at any time from your settings."}
-              </p>
-              {modal === "report" && (
-                <textarea
-                  rows={3}
-                  placeholder="What happened?"
-                  className="mt-4 w-full resize-none border border-ink-border bg-transparent p-3 text-sm outline-none focus:border-paper placeholder:text-paper-dim/60"
-                />
-              )}
-              <Button size="md" className="w-full mt-5" onClick={() => setDone(true)}>
-                {modal === "report" ? "Submit report" : "Confirm block"}
-              </Button>
-            </>
-          )}
-        </div>
-      </Modal>
+    <div className="text-sm text-paper-dim space-y-2">
+      <p>
+        Report or block someone directly from wherever you see them — a promoter&rsquo;s
+        availability request, a message thread, or your{" "}
+        <Link href="/requests" className="underline hover:text-paper">
+          Requests
+        </Link>{" "}
+        page. Every report goes to our trust &amp; safety team; a block is silent and immediate.
+      </p>
+      <p>
+        <Link href="/login" className="underline hover:text-paper">
+          Sign in
+        </Link>{" "}
+        to use either from an account.
+      </p>
     </div>
   );
 }
