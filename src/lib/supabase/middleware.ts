@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const ONBOARDING_PATH = "/onboarding";
 const LOGIN_PATH = "/login";
+const MFA_SETUP_PATH = "/mfa-setup";
+const MFA_CHALLENGE_PATH = "/mfa-challenge";
 // Legal/policy pages must be readable without an account — you can't
 // meaningfully "agree to our Terms" via a link that only works once you're
 // already signed in. Everything else still requires sign-up, per the
@@ -93,7 +95,35 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (onLoginRoute || onOnboardingRoute) {
+  // Mandatory 2FA — every onboarded account must have a verified TOTP
+  // factor, and every session must have completed its challenge, before
+  // reaching anything else. getAuthenticatorAssuranceLevel() reads this off
+  // the current session's JWT (already refreshed by getUser() above) plus
+  // its embedded factor list, so this is a local check, not an extra
+  // round trip. nextLevel === "aal2" means a verified factor exists at all;
+  // currentLevel === nextLevel means *this session* has cleared the
+  // challenge for it.
+  const onMfaSetupRoute = pathname === MFA_SETUP_PATH;
+  const onMfaChallengeRoute = pathname === MFA_CHALLENGE_PATH;
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  const needsMfaSetup = aal ? aal.nextLevel !== "aal2" : true;
+  const needsMfaChallenge = !!aal && aal.nextLevel === "aal2" && aal.currentLevel !== aal.nextLevel;
+
+  if (needsMfaSetup) {
+    if (onMfaSetupRoute) return response;
+    const url = request.nextUrl.clone();
+    url.pathname = MFA_SETUP_PATH;
+    return NextResponse.redirect(url);
+  }
+
+  if (needsMfaChallenge) {
+    if (onMfaChallengeRoute) return response;
+    const url = request.nextUrl.clone();
+    url.pathname = MFA_CHALLENGE_PATH;
+    return NextResponse.redirect(url);
+  }
+
+  if (onLoginRoute || onOnboardingRoute || onMfaSetupRoute || onMfaChallengeRoute) {
     const url = request.nextUrl.clone();
     url.pathname = landingPathFor(role);
     return NextResponse.redirect(url);

@@ -35,6 +35,7 @@ export type Role = "artist" | "promoter";
 
 interface OnboardingArtistDetails {
   role: "artist";
+  username: string;
   name: string;
   city: string;
   genres: string[];
@@ -45,6 +46,7 @@ interface OnboardingArtistDetails {
 
 interface OnboardingPromoterDetails {
   role: "promoter";
+  username: string;
   company: string;
   city: string;
 }
@@ -505,6 +507,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const completeOnboarding: StoreShape["completeOnboarding"] = useCallback(
     async (details) => {
       if (!user) throw new Error("Not signed in.");
+
+      // Claim the username first, before creating the artist/promoter row —
+      // if this fails, nothing else has been written yet, so a retry with a
+      // different username doesn't hit a duplicate-row error on the second
+      // insert below (both artists.id and promoters.id are the user's own
+      // id, so re-inserting the same row on retry would otherwise fail too).
+      const { error: usernameError } = await supabase
+        .from("profiles")
+        .update({ username: details.username })
+        .eq("id", user.id);
+      if (usernameError) {
+        // 23505 = unique_violation — the live availability check already
+        // caught this in the common case, but someone else could have taken
+        // it in the gap between checking and submitting.
+        if (usernameError.code === "23505") {
+          throw new Error("That username was just taken — try another.");
+        }
+        throw new Error(usernameError.message);
+      }
 
       if (details.role === "artist") {
         const base = slugify(details.name);

@@ -1,11 +1,13 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/layout/Logo";
 import Button from "@/components/ui/Button";
 import { useStore } from "@/lib/store";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { validateUsernameFormat } from "@/lib/username";
 import EmailVerifyPanel from "@/components/account/EmailVerifyPanel";
 import AvatarUploadField from "@/components/ui/AvatarUploadField";
 
@@ -36,6 +38,10 @@ function OnboardingInner() {
 
   const [step, setStep] = useState(1);
   const [dob, setDob] = useState("");
+  const [username, setUsername] = useState("");
+  const [usernameStatus, setUsernameStatus] = useState<
+    "idle" | "checking" | "available" | "taken" | "invalid"
+  >("idle");
   const [name, setName] = useState("");
   const [city, setCity] = useState(CITIES[0]);
   const [genres, setGenres] = useState<string[]>([]);
@@ -60,6 +66,42 @@ function OnboardingInner() {
   });
   const isOldEnough = dob !== "" && dob <= maxBirthDate;
 
+  // Debounced live availability check. Everything — including the "invalid
+  // format" / "checking" states — happens after the debounce's own await,
+  // so there's no synchronous setState in the effect body (this codebase's
+  // eslint config flags that; see the `load` pattern elsewhere in this repo
+  // for the same fix). The `cancelled` flag is the staleness guard: a
+  // slower, superseded check bails out instead of overwriting a newer one.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      if (cancelled) return;
+
+      const format = validateUsernameFormat(username);
+      if (!format.ok) {
+        setUsernameStatus(username === "" ? "idle" : "invalid");
+        return;
+      }
+
+      setUsernameStatus("checking");
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc("is_username_available", { p_username: username });
+      if (cancelled) return;
+      if (error) {
+        setUsernameStatus("idle");
+        return;
+      }
+      setUsernameStatus(data ? "available" : "taken");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [username]);
+
+  const usernameFormatResult = validateUsernameFormat(username);
+  const usernameFormatError = usernameFormatResult.ok ? null : usernameFormatResult.error;
+
   const totalSteps = type === "artist" ? 5 : 4;
   const toggleGenre = (g: string) =>
     setGenres((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
@@ -72,6 +114,7 @@ function OnboardingInner() {
       if (type === "artist") {
         await completeOnboarding({
           role: "artist",
+          username,
           name,
           city,
           genres,
@@ -82,6 +125,7 @@ function OnboardingInner() {
       } else {
         await completeOnboarding({
           role: "promoter",
+          username,
           company,
           city,
         });
@@ -137,7 +181,29 @@ function OnboardingInner() {
       </div>
 
       {step === 1 && (
-        <Step title="Confirm your age" subtitle={`You must be at least ${MINIMUM_AGE} to use Support Slot.`}>
+        <Step title="Set up your account" subtitle={`Choose a username, and confirm you're at least ${MINIMUM_AGE}.`}>
+          <Field label="Username">
+            <input
+              className={fieldCls}
+              value={username}
+              onChange={(e) => setUsername(e.target.value.trim())}
+              placeholder="e.g. slowcpu"
+              maxLength={20}
+            />
+            {usernameStatus !== "idle" && (
+              <p
+                className={cn(
+                  "mt-2 text-xs",
+                  usernameStatus === "available" ? "text-ok" : usernameStatus === "checking" ? "text-paper-dim" : "text-signal"
+                )}
+              >
+                {usernameStatus === "checking" && "Checking availability…"}
+                {usernameStatus === "available" && "Available ✓"}
+                {usernameStatus === "taken" && "That username is already taken."}
+                {usernameStatus === "invalid" && usernameFormatError}
+              </p>
+            )}
+          </Field>
           <Field label="Date of birth">
             <input
               type="date"
@@ -152,7 +218,12 @@ function OnboardingInner() {
               You must be at least {MINIMUM_AGE} years old to create a Support Slot account.
             </p>
           )}
-          <Button size="lg" className="w-full mt-2" disabled={!isOldEnough} onClick={() => setStep(2)}>
+          <Button
+            size="lg"
+            className="w-full mt-2"
+            disabled={!isOldEnough || usernameStatus !== "available"}
+            onClick={() => setStep(2)}
+          >
             Continue
           </Button>
         </Step>
