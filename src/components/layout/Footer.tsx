@@ -1,7 +1,41 @@
+"use client";
+
 import Link from "next/link";
 import Logo from "./Logo";
+import { useStore } from "@/lib/store";
 
 export default function Footer() {
+  const { role } = useStore();
+
+  // Kept in sync with Navbar's role split — this footer is only ever shown
+  // to a signed-in, onboarded account (see AppGate.tsx), so it must show
+  // that role's own links only, never the other role's (e.g. "Post a Slot"
+  // has no business appearing for an artist).
+  const platformLinks =
+    role === "artist"
+      ? [
+          { href: "/discover", label: "Find a Slot" },
+          { href: "/last-minute", label: "Last-Minute Support" },
+          { href: "/applications", label: "Applications" },
+        ]
+      : [
+          { href: "/discover", label: "Discover Artists" },
+          { href: "/dashboard/promoter", label: "My Gigs" },
+          { href: "/create-slot", label: "Post a Slot" },
+          { href: "/support-plus", label: "Support+" },
+        ];
+  const secondColLinks =
+    role === "artist"
+      ? [
+          { href: "/dashboard/artist", label: "Dashboard" },
+          { href: "/requests", label: "Requests" },
+        ]
+      : [
+          { href: "/dashboard/promoter", label: "Dashboard" },
+          { href: "/dashboard/promoter/roster", label: "Artist Roster" },
+          { href: "/messages", label: "Messages" },
+        ];
+
   return (
     <footer className="border-t border-ink-border mt-24 mb-16 lg:mb-0">
       <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-10 py-14">
@@ -12,23 +46,8 @@ export default function Footer() {
               A marketplace for support slots — built for independent and underground artists.
             </p>
           </div>
-          <FooterCol
-            title="Platform"
-            links={[
-              { href: "/discover", label: "Find a Slot" },
-              { href: "/last-minute", label: "Last-Minute Support" },
-              { href: "/support-plus", label: "Support+" },
-              { href: "/create-slot", label: "Post a Slot" },
-            ]}
-          />
-          <FooterCol
-            title="Artists"
-            links={[
-              { href: "/dashboard/artist", label: "Dashboard" },
-              { href: "/discover", label: "Find a Slot" },
-              { href: "/onboarding?type=artist", label: "Join as an Artist" },
-            ]}
-          />
+          <FooterCol title="Platform" links={platformLinks} />
+          <FooterCol title="Your Account" links={secondColLinks} />
           <FooterCol
             title="Trust & Safety"
             links={[

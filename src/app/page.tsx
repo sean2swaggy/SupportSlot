@@ -39,8 +39,8 @@ export default async function Home() {
             <Button href="/discover" size="lg">
               Find Support Slots
             </Button>
-            <Button href="/create-slot" variant="outline" size="lg">
-              Post a Slot
+            <Button href="/last-minute" variant="outline" size="lg">
+              Last-Minute Support
             </Button>
           </div>
 
@@ -73,10 +73,10 @@ export default async function Home() {
           <div className="mt-8 border border-dashed border-ink-border p-10 text-center">
             <p className="font-display text-xl">No open slots yet</p>
             <p className="mt-2 text-sm text-paper-dim">
-              Be the first to post one, or check back soon.
+              Check back soon, or see what&rsquo;s needed tonight.
             </p>
-            <Button href="/create-slot" size="md" className="mt-5">
-              Post a slot
+            <Button href="/last-minute" size="md" className="mt-5">
+              See last-minute slots
             </Button>
           </div>
         ) : (
@@ -209,11 +209,11 @@ export default async function Home() {
           for opening acts.
         </p>
         <div className="mt-9 flex flex-col sm:flex-row justify-center gap-3">
-          <Button href="/onboarding?type=artist" size="lg">
-            Join as an artist
+          <Button href="/discover" size="lg">
+            Find Support Slots
           </Button>
-          <Button href="/onboarding?type=promoter" variant="outline" size="lg">
-            Join as a promoter
+          <Button href="/applications" variant="outline" size="lg">
+            Your Applications
           </Button>
         </div>
       </section>
