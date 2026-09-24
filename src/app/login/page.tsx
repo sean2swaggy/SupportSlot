@@ -26,6 +26,11 @@ function LoginInner() {
   // next to some passive text.
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when signUp fails specifically because the email already has an
+  // account — that's not a dead end, it just means they should log in
+  // instead, so the error UI offers a direct way to do that rather than
+  // leaving them stuck re-typing a "fresh" email forever.
+  const [emailAlreadyRegistered, setEmailAlreadyRegistered] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // Set once signUp succeeds but no session came back yet — the project
   // requires email confirmation before a session exists, so there's nothing
@@ -35,6 +40,7 @@ function LoginInner() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setEmailAlreadyRegistered(false);
     if (mode === "signup" && !agreed) {
       setError("You need to agree to the Terms and Privacy Policy to continue.");
       return;
@@ -57,7 +63,12 @@ function LoginInner() {
           },
         });
         if (signUpError) {
-          setError(signUpError.message);
+          if (signUpError.code === "user_already_exists") {
+            setError("An account with this email already exists.");
+            setEmailAlreadyRegistered(true);
+          } else {
+            setError(signUpError.message);
+          }
           return;
         }
         if (data.session) {
@@ -127,7 +138,11 @@ function LoginInner() {
 
       <div className="flex border border-ink-border mb-8">
         <button
-          onClick={() => setMode("login")}
+          onClick={() => {
+            setMode("login");
+            setError(null);
+            setEmailAlreadyRegistered(false);
+          }}
           className={cn(
             "flex-1 py-3 font-mono text-xs uppercase tracking-widest transition-colors",
             mode === "login" ? "bg-paper text-ink" : "text-paper-dim hover:text-paper"
@@ -136,7 +151,11 @@ function LoginInner() {
           Log in
         </button>
         <button
-          onClick={() => setMode("signup")}
+          onClick={() => {
+            setMode("signup");
+            setError(null);
+            setEmailAlreadyRegistered(false);
+          }}
           className={cn(
             "flex-1 py-3 font-mono text-xs uppercase tracking-widest transition-colors border-l border-ink-border",
             mode === "signup" ? "bg-paper text-ink" : "text-paper-dim hover:text-paper"
@@ -225,7 +244,24 @@ function LoginInner() {
             </span>
           </label>
         )}
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && (
+          <div className="text-xs text-red-400">
+            <p>{error}</p>
+            {emailAlreadyRegistered && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("login");
+                  setError(null);
+                  setEmailAlreadyRegistered(false);
+                }}
+                className="mt-1 underline hover:text-paper"
+              >
+                Log in instead
+              </button>
+            )}
+          </div>
+        )}
         <Button
           type="submit"
           size="lg"
