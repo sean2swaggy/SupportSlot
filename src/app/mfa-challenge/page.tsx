@@ -8,6 +8,13 @@ import { createClient } from "@/lib/supabase/client";
 
 export default function MfaChallengePage() {
   const router = useRouter();
+
+  const logOut = async () => {
+    await createClient().auth.signOut();
+    router.push("/login");
+    router.refresh();
+  };
+
   const [factorId, setFactorId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [code, setCode] = useState("");
@@ -48,6 +55,13 @@ export default function MfaChallengePage() {
         <div className="flex justify-center">
           <Logo />
         </div>
+        <button
+          type="button"
+          onClick={logOut}
+          className="mt-4 font-mono text-[10px] uppercase tracking-widest text-paper-dim hover:text-signal transition-colors"
+        >
+          Log out
+        </button>
         <h1 className="mt-6 font-display text-2xl">Enter your code</h1>
         <p className="mt-3 text-sm text-paper-dim">
           Open your authenticator app and enter the current 6-digit code.

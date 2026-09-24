@@ -12,6 +12,12 @@ const LOGIN_PATH = "/login";
 // Kept in sync with PUBLIC_PATHS in src/lib/supabase/middleware.ts — these
 // must be reachable without an account (see that file for why).
 const PUBLIC_PATHS = ["/privacy", "/terms", "/trust"];
+// Same idea as onboarding below — these render bare, not because they're
+// unauthenticated but because the normal nav's links would all just bounce
+// straight back here (middleware.ts enforces the mandatory-2FA gate
+// regardless of what the client renders); showing full site chrome the
+// user can't actually use is confusing, not just redundant.
+const MFA_PATHS = ["/mfa-setup", "/mfa-challenge"];
 
 /**
  * Gates the whole app behind signup: until the signed-in account has
@@ -29,6 +35,7 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
   const onOnboardingRoute = pathname?.startsWith(ONBOARDING_PATH) ?? false;
   const onLoginRoute = pathname === LOGIN_PATH;
   const onPublicRoute = PUBLIC_PATHS.includes(pathname ?? "");
+  const onMfaRoute = MFA_PATHS.includes(pathname ?? "");
 
   useEffect(() => {
     // /login and the public legal pages are exempt too — middleware.ts is
@@ -67,6 +74,12 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
     // Not onboarded and not already on /onboarding — the effect above is
     // about to redirect there; render the same bare shell meanwhile so
     // nothing else briefly flashes.
+    return <main className="min-h-screen">{children}</main>;
+  }
+
+  // Mandatory-2FA setup/challenge — bare shell, same reasoning as
+  // onboarding above. Each of these pages provides its own way to log out.
+  if (onMfaRoute) {
     return <main className="min-h-screen">{children}</main>;
   }
 
