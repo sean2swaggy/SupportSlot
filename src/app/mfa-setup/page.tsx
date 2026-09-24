@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/layout/Logo";
 import Button from "@/components/ui/Button";
@@ -16,7 +16,16 @@ export default function MfaSetupPage() {
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
 
+  // Guards against React StrictMode's dev-only double-invocation of this
+  // effect, which would otherwise call enroll() twice back to back and hit
+  // "factor already exists" on the second call (see other useRef submit-once
+  // guards in this codebase, e.g. InviteToGigModal).
+  const startedEnrollment = useRef(false);
+
   useEffect(() => {
+    if (startedEnrollment.current) return;
+    startedEnrollment.current = true;
+
     const supabase = createClient();
     (async () => {
       // Clean up any unverified factor left over from an abandoned earlier
@@ -24,14 +33,17 @@ export default function MfaSetupPage() {
       // one — enroll() is the only call that returns a QR code, so a stale
       // unverified factor can't just be resumed.
       const { data: factors } = await supabase.auth.mfa.listFactors();
-      const stale = factors?.all.find((f) => f.factor_type === "totp" && f.status === "unverified");
-      if (stale) {
-        await supabase.auth.mfa.unenroll({ factorId: stale.id });
+      const stale = factors?.all.filter((f) => f.factor_type === "totp" && f.status === "unverified") ?? [];
+      for (const f of stale) {
+        await supabase.auth.mfa.unenroll({ factorId: f.id });
       }
 
+      // A unique friendly name per attempt — belt-and-braces alongside the
+      // guard above, so even a genuine double-tab visit can't collide on
+      // Supabase's per-user friendly_name uniqueness.
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: "totp",
-        friendlyName: "Authenticator app",
+        friendlyName: `Authenticator app ${Date.now()}`,
       });
       if (error || !data || data.type !== "totp") {
         setLoadError(error?.message ?? "Couldn't start two-factor setup — try reloading.");
