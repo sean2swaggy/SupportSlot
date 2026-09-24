@@ -262,6 +262,13 @@ function LoginInner() {
             )}
           </div>
         )}
+        {mode === "login" && (
+          <p className="text-right">
+            <Link href="/forgot-password" className="text-xs text-paper-dim hover:text-paper underline">
+              Forgot password?
+            </Link>
+          </p>
+        )}
         <Button
           type="submit"
           size="lg"

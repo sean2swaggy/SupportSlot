@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 
 // Creates (or reuses) the artist's Stripe Connect recipient account and
@@ -44,7 +45,12 @@ export async function POST(request: Request) {
       include: ["configuration.recipient"],
     });
     accountId = account.id;
-    await supabase.from("artists").update({ stripe_account_id: accountId }).eq("id", user.id);
+    // stripe_account_id is locked to service-role-only writes (see
+    // 0018_lock_down_trust_and_payment_fields.sql) — this route has already
+    // verified who the caller is and created the account for them, so the
+    // admin client is the legitimate, narrow path around that lock, same as
+    // the "booked" status transition in payments/confirm.
+    await createAdminClient().from("artists").update({ stripe_account_id: accountId }).eq("id", user.id);
   }
 
   const origin = new URL(request.url).origin;

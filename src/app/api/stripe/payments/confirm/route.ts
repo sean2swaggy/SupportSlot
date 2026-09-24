@@ -51,7 +51,11 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
   const { error } = await admin.from("applications").update({ status: "booked" }).eq("id", applicationId);
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Not error.message — this is a raw Postgres/PostgREST error (via the
+    // service-role client), which can include column/constraint names.
+    // Real detail still goes to the server log for debugging.
+    console.error("Failed to mark application booked after payment", applicationId, error);
+    return NextResponse.json({ error: "Payment succeeded, but we couldn't finalize the booking. Contact support." }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

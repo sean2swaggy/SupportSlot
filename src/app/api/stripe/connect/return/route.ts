@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 
 // Stripe sends the artist here after they finish (or partially finish) the
@@ -27,7 +28,12 @@ export async function GET(request: Request) {
       const active =
         account.configuration?.recipient?.capabilities?.stripe_balance?.stripe_transfers
           ?.status === "active";
-      await supabase
+      // stripe_transfers_active is locked to service-role-only writes (see
+      // 0018_lock_down_trust_and_payment_fields.sql) — this route re-checks
+      // capability status directly against Stripe first, so the admin
+      // client here is writing a value this route just verified, not a
+      // client-supplied one.
+      await createAdminClient()
         .from("artists")
         .update({ stripe_transfers_active: active })
         .eq("id", user.id);

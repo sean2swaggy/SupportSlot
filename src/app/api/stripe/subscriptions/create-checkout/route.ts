@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { toPence } from "@/lib/stripe/fees";
 import { SUPPORT_PLUS_ANNUAL_PRICE, SUPPORT_PLUS_MONTHLY_PRICE } from "@/lib/pricing";
@@ -20,11 +21,18 @@ export async function POST(request: Request) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, is_support_plus")
     .eq("id", user.id)
     .maybeSingle();
   if (profile?.role !== "promoter") {
     return NextResponse.json({ error: "Support+ is only available for promoter accounts." }, { status: 403 });
+  }
+  // Without this, clicking "Subscribe" twice (double-click, or a second tab
+  // left open on /support-plus) starts a second, fully independent Stripe
+  // subscription on the same customer — a real duplicate charge, not just a
+  // duplicate row, since each subscription bills separately.
+  if (profile.is_support_plus) {
+    return NextResponse.json({ error: "You already have an active Support+ subscription." }, { status: 409 });
   }
 
   const { period } = await request.json();
@@ -42,7 +50,10 @@ export async function POST(request: Request) {
   if (!customerId) {
     const customer = await stripe.customers.create({ email: user.email });
     customerId = customer.id;
-    await supabase.from("promoters").update({ stripe_customer_id: customerId }).eq("id", user.id);
+    // stripe_customer_id is locked to service-role-only writes (see
+    // 0018_lock_down_trust_and_payment_fields.sql) — see create-intent for
+    // why this must never be client-writable.
+    await createAdminClient().from("promoters").update({ stripe_customer_id: customerId }).eq("id", user.id);
   }
 
   const unitAmount = toPence(period === "annual" ? SUPPORT_PLUS_ANNUAL_PRICE : SUPPORT_PLUS_MONTHLY_PRICE);

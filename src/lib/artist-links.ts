@@ -67,13 +67,32 @@ export function mergeArtistLinks(
   };
 }
 
+// These render straight into an <a href> on a public, unauthenticated
+// profile page (ArtistLinksDisplay.tsx) — every field here is user-
+// supplied text with no format enforced server-side, so without this check
+// a `javascript:...` (or `data:`, `vbscript:`, etc.) value saved as e.g.
+// spotifyUrl would execute in the browser of anyone who viewed the profile
+// and clicked it. Only http(s) links are ever safe to render as a real
+// navigable link; anything else is dropped rather than shown broken.
+export function isSafeExternalUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function listPlatformLinks(links: ArtistLinksOverride): PlatformLink[] {
   return PLATFORM_ORDER.map((key) => ({ key, label: PLATFORM_LABELS[key], url: links[key] || "" })).filter(
-    (l) => !!l.url
+    (l) => isSafeExternalUrl(l.url)
   );
 }
 
 /** The link used for the primary "Listen" call to action. */
 export function primaryListenLink(links: ArtistLinksOverride): string | undefined {
-  return links.spotifyUrl || links.soundcloudUrl || links.bandcampUrl || links.youtubeUrl;
+  return [links.spotifyUrl, links.soundcloudUrl, links.bandcampUrl, links.youtubeUrl].find(
+    isSafeExternalUrl
+  );
 }

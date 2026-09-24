@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { applicationFeePence, toPence } from "@/lib/stripe/fees";
 import { effectiveTravelContribution } from "@/lib/travel";
@@ -78,7 +79,12 @@ export async function POST(request: Request) {
   if (!customerId) {
     const customer = await stripe.customers.create({ email: user.email });
     customerId = customer.id;
-    await supabase.from("promoters").update({ stripe_customer_id: customerId }).eq("id", user.id);
+    // stripe_customer_id is locked to service-role-only writes (see
+    // 0018_lock_down_trust_and_payment_fields.sql) — a client-writable
+    // customer id here would let a promoter point their own bookings at
+    // someone else's saved payment methods. This route just created the
+    // Customer itself, so the admin client is writing back its own result.
+    await createAdminClient().from("promoters").update({ stripe_customer_id: customerId }).eq("id", user.id);
   }
 
   const paymentIntent = await stripe.paymentIntents.create({

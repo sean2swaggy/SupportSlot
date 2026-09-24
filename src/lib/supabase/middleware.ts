@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const ONBOARDING_PATH = "/onboarding";
 const LOGIN_PATH = "/login";
+const FORGOT_PASSWORD_PATH = "/forgot-password";
 const MFA_SETUP_PATH = "/mfa-setup";
 const MFA_CHALLENGE_PATH = "/mfa-challenge";
 // Legal/policy pages must be readable without an account — you can't
@@ -65,13 +66,14 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const onLoginRoute = pathname === LOGIN_PATH;
+  const onForgotPasswordRoute = pathname === FORGOT_PASSWORD_PATH;
   const onOnboardingRoute = pathname.startsWith(ONBOARDING_PATH);
   const onPublicRoute = PUBLIC_PATHS.includes(pathname);
 
   if (onPublicRoute) return response;
 
   if (!user) {
-    if (onLoginRoute) return response;
+    if (onLoginRoute || onForgotPasswordRoute) return response;
     const url = request.nextUrl.clone();
     url.pathname = LOGIN_PATH;
     return NextResponse.redirect(url);
@@ -123,7 +125,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (onLoginRoute || onOnboardingRoute || onMfaSetupRoute || onMfaChallengeRoute) {
+  if (onLoginRoute || onForgotPasswordRoute || onOnboardingRoute || onMfaSetupRoute || onMfaChallengeRoute) {
     const url = request.nextUrl.clone();
     url.pathname = landingPathFor(role);
     return NextResponse.redirect(url);

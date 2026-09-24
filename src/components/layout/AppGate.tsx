@@ -9,6 +9,7 @@ import Footer from "@/components/layout/Footer";
 
 const ONBOARDING_PATH = "/onboarding";
 const LOGIN_PATH = "/login";
+const FORGOT_PASSWORD_PATH = "/forgot-password";
 // Kept in sync with PUBLIC_PATHS in src/lib/supabase/middleware.ts — these
 // must be reachable without an account (see that file for why).
 const PUBLIC_PATHS = ["/privacy", "/terms", "/trust"];
@@ -34,18 +35,31 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const onOnboardingRoute = pathname?.startsWith(ONBOARDING_PATH) ?? false;
   const onLoginRoute = pathname === LOGIN_PATH;
+  const onForgotPasswordRoute = pathname === FORGOT_PASSWORD_PATH;
   const onPublicRoute = PUBLIC_PATHS.includes(pathname ?? "");
   const onMfaRoute = MFA_PATHS.includes(pathname ?? "");
 
   useEffect(() => {
-    // /login and the public legal pages are exempt too — middleware.ts is
-    // the real authority on whether a signed-out (or not-yet-onboarded)
-    // visitor belongs there; this effect only needs to catch the
-    // signed-in-but-not-onboarded case elsewhere.
-    if (hydrated && !hasOnboarded && !onOnboardingRoute && !onLoginRoute && !onPublicRoute) {
+    // /login, /forgot-password, and the public legal pages are exempt too —
+    // middleware.ts is the real authority on whether a signed-out (or
+    // not-yet-onboarded) visitor belongs there; this effect only needs to
+    // catch the signed-in-but-not-onboarded case elsewhere. Missing
+    // /forgot-password here previously bounced a signed-out visitor
+    // straight to /onboarding (then middleware bounced THAT to /login,
+    // since an unauthenticated /onboarding request isn't exempt there
+    // either) before they ever saw the page — confirmed live while
+    // building the password-reset flow this covers.
+    if (
+      hydrated &&
+      !hasOnboarded &&
+      !onOnboardingRoute &&
+      !onLoginRoute &&
+      !onForgotPasswordRoute &&
+      !onPublicRoute
+    ) {
       router.replace(ONBOARDING_PATH);
     }
-  }, [hydrated, hasOnboarded, onOnboardingRoute, onLoginRoute, onPublicRoute, router]);
+  }, [hydrated, hasOnboarded, onOnboardingRoute, onLoginRoute, onForgotPasswordRoute, onPublicRoute, router]);
 
   // Before we know whether this (mock) account has already signed up, show
   // nothing but a bare mark rather than flashing the full app or the gate.
