@@ -5,7 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Logo from "@/components/layout/Logo";
 import Button from "@/components/ui/Button";
+import PasswordStrengthMeter from "@/components/account/PasswordStrengthMeter";
 import { createClient } from "@/lib/supabase/client";
+import { isPasswordAcceptable } from "@/lib/password";
 import { cn } from "@/lib/utils";
 
 function LoginInner() {
@@ -35,6 +37,10 @@ function LoginInner() {
     setError(null);
     if (mode === "signup" && !agreed) {
       setError("You need to agree to the Terms and Privacy Policy to continue.");
+      return;
+    }
+    if (mode === "signup" && !isPasswordAcceptable(password)) {
+      setError("Choose a stronger password before continuing.");
       return;
     }
     setSubmitting(true);
@@ -186,12 +192,13 @@ function LoginInner() {
           <input
             type="password"
             required
-            minLength={6}
+            minLength={mode === "signup" ? 8 : 6}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
             className="w-full border border-ink-border bg-transparent px-3.5 py-3 text-sm outline-none focus:border-paper placeholder:text-paper-dim/60"
           />
+          {mode === "signup" && <PasswordStrengthMeter password={password} />}
         </div>
         {mode === "signup" && (
           <label className="flex items-start gap-2.5 text-xs text-paper-dim cursor-pointer">
@@ -223,7 +230,9 @@ function LoginInner() {
           type="submit"
           size="lg"
           className="w-full"
-          disabled={submitting || (mode === "signup" && !agreed)}
+          disabled={
+            submitting || (mode === "signup" && (!agreed || !isPasswordAcceptable(password)))
+          }
         >
           {submitting ? "Please wait…" : mode === "login" ? "Log in" : "Continue"}
         </Button>
