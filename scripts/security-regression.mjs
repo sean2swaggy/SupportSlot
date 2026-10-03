@@ -31,6 +31,9 @@ const SERVICE_KEY = get("SUPABASE_SERVICE_ROLE_KEY");
 const APP_URL = process.env.APP_URL ?? "http://localhost:3000";
 const PASSWORD = "CorrectHorse9!Battery-Regression";
 
+// Dates relative to today so the checks don't rot (listings can't be in the past).
+const isoDaysFromNow = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
@@ -86,8 +89,8 @@ async function main() {
     .from("slots")
     .insert({
       promoter_id: promoterA.id, venue_id: venueId, headliner: "Regress Slot A", city: "London",
-      date: "2026-12-01", doors_time: "19:00", set_time: "20:00", performance_length_mins: 30,
-      expected_attendance: 100, support_fee: 5000, application_deadline: "2026-11-01",
+      date: isoDaysFromNow(60), doors_time: "19:00", set_time: "20:00", performance_length_mins: 30,
+      expected_attendance: 100, support_fee: 50, application_deadline: isoDaysFromNow(30),
     })
     .select("id")
     .single();
@@ -95,7 +98,7 @@ async function main() {
 
   const { data: applicationA } = await artistA.client
     .from("applications")
-    .insert({ slot_id: slotA.id, artist_id: artistA.id, match_percent: 80, message: "regress" })
+    .insert({ slot_id: slotA.id, artist_id: artistA.id, message: "regress" })
     .select("id")
     .single();
   cleanupRows.push({ table: "applications", id: applicationA.id });
@@ -212,33 +215,88 @@ async function main() {
       error ? error.message : "no error returned — status was written by the client"
     );
   }
-  {
-    const { error } = await artistA.client
-      .from("applications")
-      .update({ status: "booked" })
-      .eq("id", applicationA.id);
+  for (const forged of ["offered", "confirmed", "cancelled"]) {
+    await artistA.client.from("applications").update({ status: forged }).eq("id", applicationA.id);
     const { data: check } = await admin.from("applications").select("status").eq("id", applicationA.id).single();
     record(
-      "Artist cannot self-book their own application (status='booked' stays service-role only)",
-      check?.status !== "booked",
-      error ? error.message : "no error returned — status was written by the client"
+      `Artist cannot self-set their application to '${forged}' (state changes go through SQL functions)`,
+      check?.status === "submitted" || check?.status === "viewed",
+      `status is '${check?.status}'`
     );
+  }
+  {
+    // Inserting an application that is already confirmed used to be possible.
+    const { error } = await artistB.client
+      .from("applications")
+      .insert({ slot_id: slotA.id, artist_id: artistB.id, status: "confirmed" });
+    const { data: check } = await admin.from("applications").select("status").eq("slot_id", slotA.id).eq("artist_id", artistB.id);
+    if (check?.length) cleanupRows.push({ table: "applications", id: check[0].id });
+    record(
+      "Artist cannot INSERT an application that is already 'confirmed'",
+      !!error || (check?.length ?? 0) === 0 || check[0].status === "submitted",
+      error ? error.message : `row status: ${check?.[0]?.status ?? "none"}`
+    );
+  }
+  {
+    const { error } = await artistA.client.rpc("make_offer", { p_application_id: applicationA.id });
+    record("Artist cannot make an offer on a promoter's behalf", !!error, error?.message ?? "no error");
+  }
+  {
+    const { error } = await promoterB.client.rpc("make_offer", { p_application_id: applicationA.id });
+    record("Another promoter cannot make an offer on someone else's application", !!error, error?.message ?? "no error");
+  }
+  {
+    const { error } = await promoterB.client.rpc("close_slot", { p_slot_id: slotA.id });
+    const { data: check } = await admin.from("slots").select("status").eq("id", slotA.id).single();
+    record("Another promoter cannot close someone else's listing", !!error && check?.status === "open", error?.message ?? "no error");
+  }
+  {
+    await promoterB.client.from("slots").update({ headliner: "hijacked" }).eq("id", slotA.id);
+    const { data: check } = await admin.from("slots").select("headliner").eq("id", slotA.id).single();
+    record("Another promoter cannot edit someone else's listing", check?.headliner === "Regress Slot A", `headliner: ${check?.headliner}`);
+  }
+  {
+    // A booking can only come from make_offer; clients have no insert/update on bookings at all.
+    const { error } = await promoterA.client.from("bookings").insert({
+      slot_id: slotA.id, artist_id: artistA.id, promoter_id: promoterA.id, status: "confirmed", payment_status: "paid",
+    });
+    record("A client cannot insert a booking row directly", !!error, error?.message ?? "no error — a booking was written by the client");
+  }
+  {
+    const { error } = await admin.rpc("rate_limit_hit", { p_key: "regress", p_limit: 1, p_window_seconds: 60 });
+    const { error: clientError } = await artistA.client.rpc("rate_limit_hit", { p_key: "regress", p_limit: 1, p_window_seconds: 60 });
+    record("The rate limiter is not callable by signed-in clients", !!clientError && !error, clientError?.message ?? "no error");
+  }
+  {
+    const { error } = await artistA.client.rpc("admin_suspend_user", { p_profile_id: artistB.id, p_reason: "regression test" });
+    record("A normal user cannot call staff actions", !!error, error?.message ?? "no error");
+    const { data } = await artistA.client.rpc("staff_find_users", { p_q: "", p_limit: 5 });
+    record("A normal user cannot read the staff user directory", !data || data.length === 0, `${data?.length ?? 0} rows`);
+  }
+  {
+    const anon = createClient(SUPABASE_URL, ANON_KEY);
+    const { error } = await anon.rpc("admin_recent_bookings", { p_limit: 5 });
+    record("A signed-out client cannot call admin payment reads", !!error, error?.message ?? "no error");
   }
 
   // ---------------------------------------------------------------------
   // 5. Manipulated payment amount / recipient / booking id.
   // ---------------------------------------------------------------------
   {
-    const res = await fetch(`${APP_URL}/api/stripe/payments/create-intent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ applicationId: applicationA.id }),
-    });
+    const res = await fetch(`${APP_URL}/api/bookings/${applicationA.id}/pay`, { method: "POST" });
     record(
-      "create-intent rejects a request with no session, regardless of applicationId supplied",
+      "Pay endpoint rejects a request with no session, whatever id is supplied",
       res.status === 401,
       `status ${res.status}`
     );
+  }
+  {
+    for (const path of ["/api/account/delete", "/api/account/export", "/api/stripe/connect/onboard"]) {
+      const res = await fetch(`${APP_URL}${path}`, { method: path.endsWith("export") ? "GET" : "POST", redirect: "manual" });
+      record(`${path} requires a session`, res.status === 401, `status ${res.status}`);
+    }
+    const res = await fetch(`${APP_URL}/api/cron/send-emails`);
+    record("Cron endpoints refuse requests without the cron secret", res.status === 401 || res.status === 403 || res.status === 503, `status ${res.status}`);
   }
 
   // ---------------------------------------------------------------------

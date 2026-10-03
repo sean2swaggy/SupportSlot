@@ -65,7 +65,7 @@ import { toBooking, toPaymentEvent, BOOKING_COLUMNS, type BookingRow, type Payme
 import type { Booking, PaymentEvent } from "@/lib/types";
 import { validateRecipients } from "@/lib/availability";
 
-const ARTIST_COLUMNS =
+export const ARTIST_COLUMNS =
   "id, handle, name, image_url, banner_image_url, location, genres, spotify_url, instagram_url, tiktok_url, soundcloud_url, bandcamp_url, youtube_url, website_url, monthly_listeners, bio, live_video_thumbnail_url, live_video_url, availability, travel_radius_miles, verification, artist_size, last_minute_alerts, stripe_transfers_active, member_since";
 
 async function fetchArtistWithChildren(
@@ -149,7 +149,7 @@ export async function getVenue(supabase: SupabaseClient, id: string): Promise<Ve
   return toVenue(data as VenueRow);
 }
 
-const SLOT_COLUMNS =
+export const SLOT_COLUMNS =
   "id, promoter_id, venue_id, headliner, headliner_image_url, artist_photo_url, city, date, doors_time, set_time, performance_length_mins, genres, expected_attendance, support_fee, travel_contribution, booking_fee, requirements, application_deadline, applicant_count, is_urgent, status, artist_size_fit, description, rescheduled_at, posted_at";
 
 // Includes the venue so a list of cards doesn't need a request per card.
@@ -808,7 +808,7 @@ export async function isPromoterBlocked(supabase: SupabaseClient, artistId: stri
 // 0015_gig_invitations.sql.
 // ---------------------------------------------------------------------------
 
-const GIG_INVITATION_COLUMNS =
+export const GIG_INVITATION_COLUMNS =
   "id, slot_id, promoter_id, artist_id, message, status, linked_application_id, created_at, responded_at";
 
 export async function createGigInvitation(
@@ -941,7 +941,7 @@ export async function withdrawGigInvitation(supabase: SupabaseClient, id: string
 // of a bare empty state.
 // ---------------------------------------------------------------------------
 
-const SCHEDULE_ENTRY_COLUMNS =
+export const SCHEDULE_ENTRY_COLUMNS =
   "id, schedule_id, kind, title, stage, start_at, end_at, artist_id, notes, sort_order";
 
 export async function getShowSchedule(supabase: SupabaseClient, slotId: string): Promise<ShowSchedule | null> {
