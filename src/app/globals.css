@@ -69,6 +69,17 @@ body {
   textarea {
     font-size: 16px;
   }
+  /* iOS gives date/time inputs an intrinsic width wider than a phone column,
+     which pushed the onboarding date-of-birth field off-screen. */
+  input[type="date"],
+  input[type="time"] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+    max-width: 100%;
+    display: block;
+    text-align: left;
+  }
 }
 
 ::selection {
