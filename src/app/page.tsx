@@ -125,8 +125,8 @@ export default async function Home() {
             },
             {
               n: "02",
-              t: "Check your match",
-              d: "See a guidance match score based on genre, location, audience compatibility and availability.",
+              t: "See how it fits",
+              d: "A plain explanation of whether the genre, location and act size line up with your profile — information, not a score.",
             },
             {
               n: "03",

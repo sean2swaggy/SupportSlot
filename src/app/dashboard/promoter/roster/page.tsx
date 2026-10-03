@@ -66,7 +66,7 @@ export default function RosterPage() {
           <h1 className="font-display uppercase text-3xl sm:text-5xl leading-none">Artist roster</h1>
           <p className="mt-3 max-w-[60ch] text-paper-dim">
             Artists you&rsquo;ve saved from profiles or applications. Only you can see this list —
-            artists are never notified, and it never affects their match score or ranking.
+            artists are never notified, and it never affects how they appear or whether they get booked.
           </p>
         </div>
         <Button href="/dashboard/promoter/requests" size="md">

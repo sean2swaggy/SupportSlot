@@ -193,3 +193,65 @@ export async function setEmailNotifications(supabase: SupabaseClient, profileId:
   if (!data || data.length === 0) return fail("Couldn't save that setting.");
   return ok();
 }
+
+// --- Listing edit ---------------------------------------------------------
+
+export interface ListingPatch {
+  headliner: string;
+  headlinerImage: string | null;
+  artistPhoto: string | null;
+  venueId: string;
+  city: string;
+  date: string;
+  doorsTime: string;
+  setTime: string;
+  performanceLengthMins: number;
+  genres: string[];
+  expectedAttendance: number;
+  supportFee: number;
+  travelContribution: number;
+  bookingFee: number;
+  requirements: string[];
+  applicationDeadline: string;
+  isUrgent: boolean;
+  artistSizeFit: string[];
+  description: string;
+}
+
+/**
+ * Edits a listing the signed-in promoter owns. RLS limits the row to the
+ * owner; slots_guard() refuses a change to the date, venue, times or money
+ * while an offer or confirmed booking exists, and notifies applicants of
+ * material changes otherwise.
+ */
+export async function updateListing(supabase: SupabaseClient, slotId: string, p: ListingPatch): Promise<Result<void>> {
+  const { data, error } = await supabase
+    .from("slots")
+    .update({
+      headliner: p.headliner,
+      headliner_image_url: p.headlinerImage,
+      artist_photo_url: p.artistPhoto,
+      venue_id: p.venueId,
+      city: p.city,
+      date: p.date,
+      doors_time: p.doorsTime,
+      set_time: p.setTime,
+      performance_length_mins: p.performanceLengthMins,
+      genres: p.genres,
+      expected_attendance: p.expectedAttendance,
+      support_fee: p.supportFee,
+      travel_contribution: p.travelContribution,
+      booking_fee: p.bookingFee,
+      requirements: p.requirements,
+      application_deadline: p.applicationDeadline,
+      is_urgent: p.isUrgent,
+      artist_size_fit: p.artistSizeFit,
+      description: p.description,
+    })
+    .eq("id", slotId)
+    .select("id");
+  if (error) return fail(error);
+  // Zero rows means the policy hid it from this user: not theirs, or gone.
+  if (!data || data.length === 0) return fail("You can't edit this listing.");
+  return ok();
+}

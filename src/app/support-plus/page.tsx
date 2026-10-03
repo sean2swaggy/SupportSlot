@@ -1,24 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
 import Button from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { supportPlusPrice, supportPlusSavingsLabel } from "@/lib/pricing";
 
+// Only things that exist and work today. (Team access and scheduled reminders
+// were listed before they were built; they've been removed rather than left as
+// "coming soon" promises.)
 const FEATURES = [
   {
     t: "Artist Roster",
-    d: "Save artists straight from their profile or an application into your own private list — never visible to the artist, never seeded from anywhere else.",
+    d: "Save artists straight from their profile or an application into your own private list, with notes and tags. The artist never sees it.",
   },
   {
     t: "Availability requests",
-    d: "Ask roster artists if they're free for a show before you commit to a real booking. Not a reservation — just a faster way to check who's around.",
+    d: "Ask roster artists if they're free for a show before you commit. An answer is guidance, not a reservation or a booking.",
   },
-  { t: "Reusable event templates", d: "Save a show's details once and reuse them the next time you're booking a similar night." },
-  { t: "Team collaboration", d: "Share roster access with people on your team. (Coming soon — single-owner accounts for now.)" },
-  { t: "Scheduled reminders", d: "Get nudged before a response deadline passes. (Coming soon.)" },
-  { t: "Booking & payment report exports", d: "Download a CSV of your bookings and what you paid, any time." },
+  { t: "Reusable request templates", d: "Save a show's details once and reuse them in your next availability request." },
+  { t: "Booking & payment report export", d: "Download a CSV of your bookings and what you paid, any time." },
 ];
 
 const FREE_INCLUDES = [
@@ -28,8 +30,27 @@ const FREE_INCLUDES = [
   "Complete real, paid bookings",
 ];
 
+function CheckoutNotice() {
+  const search = useSearchParams();
+  const { reload } = useStore();
+  const checkout = search.get("checkout");
+  // Coming back from Stripe: re-read our record of the subscription.
+  useEffect(() => {
+    if (checkout) void reload();
+  }, [checkout, reload]);
+  if (checkout === "success")
+    return <p className="mt-6 border border-ok/50 bg-ok/10 px-5 py-3 text-sm" role="status">Thanks — your subscription is active.</p>;
+  if (checkout === "pending")
+    return <p className="mt-6 border border-acid/50 bg-acid/10 px-5 py-3 text-sm" role="status">We haven&rsquo;t had confirmation from Stripe yet. This page updates when we do — you haven&rsquo;t been charged twice if you refresh.</p>;
+  if (checkout === "error")
+    return <p className="mt-6 border border-signal/50 px-5 py-3 text-sm text-signal" role="alert">We couldn&rsquo;t confirm your checkout. If you were charged, contact support and we&rsquo;ll sort it out.</p>;
+  return null;
+}
+
+const shortDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : null);
+
 export default function SupportPlusPage() {
-  const { role, isSupportPlus, supportPlusBillingPeriod, startSupportPlusCheckout, openBillingPortal } = useStore();
+  const { role, isSupportPlus, supportPlusBillingPeriod, supportPlusStatus, supportPlusPeriodEnd, supportPlusCancelAtPeriodEnd, startSupportPlusCheckout, openBillingPortal } = useStore();
   const [period, setPeriod] = useState<"monthly" | "annual">("monthly");
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,10 +120,9 @@ export default function SupportPlusPage() {
           Artists always use Support Slot for free.
         </p>
         <p className="mt-1 text-sm text-paper-dim">
-          Support+ never affects an artist&rsquo;s match score, ranking, or ability to apply, get
-          booked and get paid — it&rsquo;s entirely about how promoters organise their side of the
-          platform. Booking and payment-processing fees are separate from this subscription; see
-          the fee breakdown on every booking.
+          Support+ never affects who gets booked, how artists are shown, or an artist&rsquo;s ability to apply, be booked
+          and be paid. It only changes how a promoter organises their own side. Booking and card-processing fees are separate from
+          this subscription; every booking shows its full breakdown.
         </p>
       </div>
 
@@ -201,21 +221,45 @@ export default function SupportPlusPage() {
         </div>
       </div>
 
+      <Suspense fallback={null}>
+        <CheckoutNotice />
+      </Suspense>
+
       {isSupportPlus && (
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border border-ok/50 bg-ok/10 px-5 py-4">
-          <p className="font-mono text-xs uppercase tracking-widest text-ok">
-            Support+ active — £{price.toFixed(2)}/{activePeriod === "annual" ? "year" : "month"}
-          </p>
-          <button
-            onClick={manage}
-            disabled={starting}
-            className="font-mono text-[11px] uppercase tracking-widest text-paper-dim hover:text-paper hover:underline disabled:opacity-50"
-          >
-            Manage billing / cancel
-          </button>
+        <div className="mt-6 border border-ok/50 bg-ok/10 px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="font-mono text-xs uppercase tracking-widest text-ok">
+              Support+ active — £{price.toFixed(2)}/{activePeriod === "annual" ? "year" : "month"}
+            </p>
+            <button
+              onClick={manage}
+              disabled={starting}
+              className="font-mono text-[11px] uppercase tracking-widest text-paper-dim hover:text-paper hover:underline disabled:opacity-50"
+            >
+              Manage billing / cancel
+            </button>
+          </div>
+          {supportPlusStatus === "past_due" ? (
+            <p className="mt-2 text-sm text-signal" role="alert">
+              Your last payment didn&rsquo;t go through. Update your payment method under &ldquo;Manage billing&rdquo; — Stripe
+              retries automatically, and Support+ stays on while it does. If it keeps failing, the subscription ends.
+            </p>
+          ) : supportPlusCancelAtPeriodEnd ? (
+            <p className="mt-2 text-sm text-paper-dim">
+              Cancelled — you keep Support+ until {shortDate(supportPlusPeriodEnd) ?? "the end of this billing period"}, and
+              you won&rsquo;t be charged again.
+            </p>
+          ) : (
+            supportPlusPeriodEnd && <p className="mt-2 text-sm text-paper-dim">Renews on {shortDate(supportPlusPeriodEnd)}.</p>
+          )}
         </div>
       )}
-      {error && <p className="mt-3 text-sm text-signal">{error}</p>}
+      {!isSupportPlus && supportPlusStatus && ["canceled", "unpaid", "incomplete_expired"].includes(supportPlusStatus) && (
+        <p className="mt-6 border border-ink-border px-5 py-3 text-sm text-paper-dim">
+          Your previous Support+ subscription has ended. Your roster and past requests are kept; subscribe again to add to them.
+        </p>
+      )}
+      {error && <p className="mt-3 text-sm text-signal" role="alert">{error}</p>}
 
       <div className="mt-16">
         <p className="font-mono text-[11px] uppercase tracking-widest text-paper-dim mb-6">

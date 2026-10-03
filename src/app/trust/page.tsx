@@ -14,16 +14,16 @@ const POLICIES = [
     d: "Every listing shows the support fee and travel contribution up front, before you apply. What you see is what you're offered.",
   },
   {
-    t: "Verified promoters & venues",
-    d: "Promoters and venues can apply for a verification badge once we've confirmed their identity and booking history.",
+    t: "Verification badges",
+    d: "A badge means our team has checked a promoter or artist. Not everyone has one yet, and the absence of a badge doesn't mean anything is wrong.",
   },
   {
     t: "Clear payment information",
-    d: "When a promoter books an artist, the fee split is shown before confirming: the artist's full fee, and Support Slot's separate booking fee, paid by the promoter.",
+    d: "Every offer shows its terms up front and they're fixed once it's made: the artist's full fee and travel, plus Support Slot's separate booking fee and card processing, which the promoter pays.",
   },
   {
     t: "Cancellation policy",
-    d: "Either side can cancel a confirmed booking, but repeated late cancellations affect your account standing and visibility in search.",
+    d: "Either side can cancel a confirmed booking, giving a reason; the other side is told straight away. If a payment had been made, our team reviews it — a refund isn't automatic. Repeated late cancellations may lead us to act on an account.",
   },
 ];
 
@@ -55,7 +55,7 @@ export default function TrustPage() {
         <p className="font-display text-2xl">See something wrong?</p>
         <p className="mt-2 text-sm text-paper-dim max-w-[54ch]">
           Report a listing that requests payment, misrepresents a show, or breaks any of the
-          policies above. You can also block a user at any time — they won&rsquo;t be notified.
+          policies above. Artists can also block a promoter from a conversation.
         </p>
         <div className="mt-5">
           <ReportBlockDemo />

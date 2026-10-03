@@ -23,6 +23,23 @@ export function safeNextPath(raw: string | null | undefined): string | null {
   return value;
 }
 
+/**
+ * Where /auth/callback sends someone after an email link. Normal pages must
+ * pass safeNextPath; the one extra destination is /reset-password, which is an
+ * auth screen (so safeNextPath refuses it) but is exactly where a recovery
+ * link has to land. Anything else falls back to onboarding.
+ */
+export function callbackNextPath(raw: string | null | undefined): string {
+  if (raw === "/reset-password") return "/reset-password";
+  return safeNextPath(raw) ?? "/onboarding";
+}
+
+/** Reads a safe `next` from the current URL (client only). */
+export function nextFromLocation(): string | null {
+  if (typeof window === "undefined") return null;
+  return safeNextPath(new URLSearchParams(window.location.search).get("next"));
+}
+
 /** Builds /login?next=<current path> for a signed-out visitor. */
 export function loginUrlFor(pathname: string, search: string): string {
   const here = safeNextPath(pathname + search);

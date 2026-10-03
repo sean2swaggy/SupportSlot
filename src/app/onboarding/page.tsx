@@ -8,6 +8,7 @@ import { useStore } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { validateUsernameFormat } from "@/lib/username";
+import { nextFromLocation } from "@/lib/redirect";
 import EmailVerifyPanel from "@/components/account/EmailVerifyPanel";
 import AvatarUploadField from "@/components/ui/AvatarUploadField";
 
@@ -139,7 +140,7 @@ function OnboardingInner() {
   };
 
   const goDashboard = () => {
-    router.push(type === "artist" ? "/dashboard/artist" : "/dashboard/promoter");
+    router.push(nextFromLocation() ?? (type === "artist" ? "/dashboard/artist" : "/dashboard/promoter"));
   };
 
   if (finished) {

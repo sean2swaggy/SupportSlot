@@ -3,7 +3,7 @@ import { isPublicPath, roleAccess } from "./routes";
 
 describe("public vs private routes", () => {
   it("browsing listings, profiles and the rules needs no account", () => {
-    for (const p of ["/", "/discover", "/slot/123", "/artist/someone", "/last-minute", "/privacy", "/terms", "/trust", "/support", "/login", "/forgot-password"]) {
+    for (const p of ["/", "/discover", "/slot/123", "/artist/someone", "/last-minute", "/privacy", "/terms", "/trust", "/support", "/login", "/forgot-password", "/auth/callback"]) {
       expect(isPublicPath(p), p).toBe(true);
     }
   });

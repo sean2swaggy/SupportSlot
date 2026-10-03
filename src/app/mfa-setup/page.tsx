@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Logo from "@/components/layout/Logo";
 import Button from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
+import { nextFromLocation } from "@/lib/redirect";
 
 export default function MfaSetupPage() {
   const router = useRouter();
@@ -74,7 +75,7 @@ export default function MfaSetupPage() {
       return;
     }
     // Session is now aal2 — middleware will let normal routes through.
-    router.push("/");
+    router.push(nextFromLocation() ?? "/");
     router.refresh();
   };
 

@@ -10,6 +10,7 @@ export default function ArtistMonthlyListenersEditor({ artist }: { artist: Artis
   const [draft, setDraft] = useState<string>(() => String(artist.monthlyListeners));
   const [savedPulse, setSavedPulse] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleChange = (value: string) => {
     setDraft(value.replace(/[^0-9]/g, ""));
@@ -19,8 +20,13 @@ export default function ArtistMonthlyListenersEditor({ artist }: { artist: Artis
   const handleSave = async () => {
     const n = Math.max(0, Math.round(Number(draft) || 0));
     setSaving(true);
-    await setArtistMonthlyListeners(n);
+    setError(null);
+    const result = await setArtistMonthlyListeners(n);
     setSaving(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
     setDraft(String(n));
     setSavedPulse(true);
     setTimeout(() => setSavedPulse(false), 2000);
@@ -32,8 +38,8 @@ export default function ArtistMonthlyListenersEditor({ artist }: { artist: Artis
         Monthly listeners
       </p>
       <p className="text-xs text-paper-dim mb-4 max-w-[56ch]">
-        We&rsquo;re unable to link your live monthly listeners — please add your current count and
-        we&rsquo;ll show it on your profile.
+        Enter your current monthly listener count. It&rsquo;s self-reported — we don&rsquo;t verify it, and your
+        profile says so.
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <input
@@ -50,6 +56,11 @@ export default function ArtistMonthlyListenersEditor({ artist }: { artist: Artis
           <span className="font-mono text-[10px] uppercase tracking-widest text-ok">Saved ✓</span>
         )}
       </div>
+      {error && (
+        <p className="mt-3 text-sm text-signal" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

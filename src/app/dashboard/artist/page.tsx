@@ -17,6 +17,7 @@ import ArtistLinksEditor from "@/components/artists/ArtistLinksEditor";
 import ArtistMonthlyListenersEditor from "@/components/artists/ArtistMonthlyListenersEditor";
 import EmailVerifyBanner from "@/components/account/EmailVerifyBanner";
 import PayoutPanel from "@/components/payouts/PayoutPanel";
+import { profileChecklist, profileCompletion } from "@/lib/profile";
 import type { SupportSlot } from "@/lib/types";
 
 function getGreeting() {
@@ -91,12 +92,33 @@ export default function ArtistDashboard() {
             </h1>
           </div>
         </div>
-        <Button href={`/artist/${me.handle}`} variant="outline" size="md">
-          View public profile
-        </Button>
+        <div className="flex gap-3">
+          <Button href="/dashboard/artist/profile" variant="outline" size="md">
+            Edit profile
+          </Button>
+          <Button href={`/artist/${me.handle}`} variant="outline" size="md">
+            View public profile
+          </Button>
+        </div>
       </div>
 
       <EmailVerifyBanner />
+
+      {(() => {
+        const items = profileChecklist(me);
+        const { done, total } = profileCompletion(items);
+        const next = items.find((i) => !i.done);
+        if (!next) return null;
+        return (
+          <Link href="/dashboard/artist/profile" className="mt-8 flex items-center justify-between gap-4 border border-acid/50 bg-acid/5 px-5 py-4 hover:bg-acid/10 transition-colors">
+            <span className="text-sm">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-acid block mb-0.5">Profile {done}/{total}</span>
+              Next: {next.label.toLowerCase()}
+            </span>
+            <span className="font-mono text-[11px] uppercase tracking-widest text-acid shrink-0">Finish profile →</span>
+          </Link>
+        );
+      })()}
 
       <div className="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Applications sent" value={stats.sent} />

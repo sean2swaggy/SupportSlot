@@ -34,3 +34,15 @@ describe("loginUrlFor", () => {
     expect(loginUrlFor("/login", "")).toBe("/login");
   });
 });
+
+describe("callbackNextPath", () => {
+  it("lets a recovery link reach /reset-password, and sends everything unsafe to onboarding", async () => {
+    const { callbackNextPath } = await import("./redirect");
+    expect(callbackNextPath("/reset-password")).toBe("/reset-password");
+    expect(callbackNextPath("/slot/abc")).toBe("/slot/abc");
+    expect(callbackNextPath(null)).toBe("/onboarding");
+    expect(callbackNextPath("//evil.com")).toBe("/onboarding");
+    expect(callbackNextPath("https://evil.com")).toBe("/onboarding");
+    expect(callbackNextPath("/reset-password/../login")).toBe("/onboarding");
+  });
+});

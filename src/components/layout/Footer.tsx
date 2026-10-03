@@ -5,14 +5,19 @@ import Logo from "./Logo";
 import { useStore } from "@/lib/store";
 
 export default function Footer() {
-  const { role } = useStore();
+  const { role, signedIn } = useStore();
 
   // Kept in sync with Navbar's role split — this footer is only ever shown
   // to a signed-in, onboarded account (see AppGate.tsx), so it must show
   // that role's own links only, never the other role's (e.g. "Post a Slot"
   // has no business appearing for an artist).
-  const platformLinks =
-    role === "artist"
+  const platformLinks = !signedIn
+    ? [
+        { href: "/discover", label: "Find a Slot" },
+        { href: "/last-minute", label: "Last-Minute Support" },
+        { href: "/login?mode=signup", label: "Create an account" },
+      ]
+    : role === "artist"
       ? [
           { href: "/discover", label: "Find a Slot" },
           { href: "/last-minute", label: "Last-Minute Support" },
@@ -24,16 +29,24 @@ export default function Footer() {
           { href: "/create-slot", label: "Post a Slot" },
           { href: "/support-plus", label: "Support+" },
         ];
-  const secondColLinks =
-    role === "artist"
+  const secondColLinks = !signedIn
+    ? [
+        { href: "/login", label: "Log in" },
+        { href: "/support", label: "Contact support" },
+      ]
+    : role === "artist"
       ? [
           { href: "/dashboard/artist", label: "Dashboard" },
           { href: "/requests", label: "Requests" },
+          { href: "/settings", label: "Settings" },
+          { href: "/support", label: "Contact support" },
         ]
       : [
           { href: "/dashboard/promoter", label: "Dashboard" },
           { href: "/dashboard/promoter/roster", label: "Artist Roster" },
           { href: "/messages", label: "Messages" },
+          { href: "/settings", label: "Settings" },
+          { href: "/support", label: "Contact support" },
         ];
 
   return (
@@ -59,7 +72,7 @@ export default function Footer() {
         </div>
         <div className="mt-14 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-t border-ink-border pt-6">
           <p className="font-mono text-[10px] uppercase tracking-widest text-paper-dim">
-            © {new Date().getFullYear()} Support Slot — prototype build
+            © {new Date().getFullYear()} Support Slot
           </p>
           <p className="font-mono text-[10px] uppercase tracking-widest text-acid">
             No pay-to-play. Ever.

@@ -53,9 +53,23 @@ function PlusIcon() {
 
 export default function MobileNav() {
   const pathname = usePathname();
-  const { role, unreadMessageCount } = useStore();
+  const { role, signedIn, unreadMessageCount } = useStore();
 
   const isActive = (href: string) => pathname === href;
+
+  // A visitor with no account gets a simple bar: browse, last-minute, log in.
+  if (!signedIn) {
+    return (
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-30 flex lg:hidden items-stretch justify-between border-t border-ink-border bg-ink/95 backdrop-blur px-2 pb-[env(safe-area-inset-bottom)]"
+        aria-label="Primary"
+      >
+        <NavItem href="/discover" label="Discover" icon={<DiscoverIcon />} active={isActive("/discover")} />
+        <NavItem href="/last-minute" label="Tonight" icon={<AppsIcon />} active={isActive("/last-minute")} />
+        <NavItem href="/login" label="Log in" icon={<ProfileIcon />} active={isActive("/login")} />
+      </nav>
+    );
+  }
 
   // A promoter's primary tab is now artist discovery, same as an artist's
   // primary tab is slot discovery — both point at /discover, which

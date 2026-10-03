@@ -9,7 +9,7 @@ export default function PrivacyPage() {
       <h1 className="font-display uppercase text-4xl sm:text-5xl leading-[0.95] tracking-tight">
         Privacy Policy
       </h1>
-      <p className="mt-4 text-sm text-paper-dim">Last updated: 23 September 2026</p>
+      <p className="mt-4 text-sm text-paper-dim">Last updated: 3 October 2026</p>
 
       <div className="mt-10 space-y-10 text-paper-dim [&_h2]:font-display [&_h2]:text-2xl [&_h2]:text-paper [&_h2]:mb-3 [&_p]:leading-relaxed [&_p+p]:mt-3 [&_li]:leading-relaxed [&_ul]:mt-3 [&_ul]:space-y-2 [&_ul]:list-disc [&_ul]:pl-5">
         <section>
@@ -56,6 +56,11 @@ export default function PrivacyPage() {
             themselves.
           </p>
           <p>
+            <span className="text-paper">Reports and support requests.</span> If you report
+            something or contact support, we keep what you send and the details needed to follow
+            it up, and our staff see it. Staff actions on accounts are recorded in an audit log.
+          </p>
+          <p>
             <span className="text-paper">Technical data.</span> Standard request logs (e.g. IP
             address) from our hosting and infrastructure providers, and a session cookie used only
             to keep you signed in.
@@ -66,9 +71,9 @@ export default function PrivacyPage() {
           <h2>3. How we use it</h2>
           <ul>
             <li>To create and run your account, and gate the platform behind sign-up</li>
-            <li>To operate the marketplace — matching, applications, bookings, messaging</li>
-            <li>To process payments and payouts through Stripe when a booking is confirmed</li>
-            <li>To send you notifications about applications, bookings, and messages</li>
+            <li>To operate the marketplace — listings, applications, offers, bookings, messaging</li>
+            <li>To process payments and payouts through Stripe when a promoter pays for a confirmed booking</li>
+            <li>To send you notifications about applications, bookings and messages — always in the app, and by email only if you haven&rsquo;t turned email off and an email provider is configured for the site</li>
             <li>To investigate reports made under our Trust &amp; Safety policies</li>
             <li>To meet our legal and regulatory obligations</li>
           </ul>
@@ -114,10 +119,13 @@ export default function PrivacyPage() {
         <section>
           <h2>6. How long we keep it</h2>
           <p>
-            We keep your account and activity data for as long as your account is active. If you
-            want your account and personal data deleted, contact us using the details below and
-            we&rsquo;ll action it, subject to any records we&rsquo;re legally required to retain
-            (for example, transaction records for tax purposes).
+            We keep your account and activity data for as long as your account is active. You can
+            download a copy of your data, and delete your account, yourself from Settings. Deleting
+            removes your profile, messages and saved gigs and withdraws anything still open. We keep
+            booking and payment records, as we&rsquo;re legally required to (for example, for tax),
+            but they are no longer linked to your account — they keep only the names shown at the
+            time. An account can&rsquo;t be deleted while there is an upcoming confirmed booking or an
+            unresolved payment.
           </p>
         </section>
 
@@ -171,10 +179,10 @@ export default function PrivacyPage() {
         <section>
           <h2>11. Contact us</h2>
           <p>
-            Questions about this policy or your data — email{" "}
-            <a href="mailto:privacy@supportslot.example" className="underline hover:text-acid">
-              privacy@supportslot.example
-            </a>
+            Questions about this policy or your data — contact us through our{" "}
+            <Link href="/support" className="underline hover:text-acid">
+              support page
+            </Link>
             .
           </p>
         </section>

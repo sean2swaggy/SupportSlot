@@ -13,7 +13,9 @@ const PUBLIC_EXACT = [
   "/", "/discover", "/last-minute", "/privacy", "/terms", "/trust", "/support",
   "/login", "/forgot-password",
 ];
-const PUBLIC_PREFIXES = ["/slot/", "/artist/"];
+// /auth/ is the email-link callback: it has to run signed-out to turn the
+// one-time code into a session (it validates its own `next`).
+const PUBLIC_PREFIXES = ["/slot/", "/artist/", "/auth/"];
 
 /** Auth-flow screens: reachable signed-out (login) or mid-flow (the rest). */
 export const AUTH_SCREENS = ["/login", "/forgot-password", "/onboarding", "/mfa-setup", "/mfa-challenge", "/suspended"];

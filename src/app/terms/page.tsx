@@ -9,7 +9,7 @@ export default function TermsPage() {
       <h1 className="font-display uppercase text-4xl sm:text-5xl leading-[0.95] tracking-tight">
         Terms of Service
       </h1>
-      <p className="mt-4 text-sm text-paper-dim">Last updated: 23 September 2026</p>
+      <p className="mt-4 text-sm text-paper-dim">Last updated: 3 October 2026</p>
 
       <div className="mt-10 space-y-10 text-paper-dim [&_h2]:font-display [&_h2]:text-2xl [&_h2]:text-paper [&_h2]:mb-3 [&_p]:leading-relaxed [&_p+p]:mt-3 [&_li]:leading-relaxed [&_ul]:mt-3 [&_ul]:space-y-2 [&_ul]:list-disc [&_ul]:pl-5">
         <section>
@@ -28,7 +28,7 @@ export default function TermsPage() {
           <h2>2. What Support Slot is</h2>
           <p>
             Support Slot is a marketplace that connects artists with promoters and venues posting
-            support-slot (opening act) opportunities. We provide the platform, matching, and
+            support-slot (opening act) opportunities. We provide the platform, listing discovery, and
             payment facilitation — we&rsquo;re not a party to the performance itself, and
             we&rsquo;re not a talent agency, promoter, or venue.
           </p>
@@ -64,12 +64,15 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2>5. Applications, matching &amp; bookings</h2>
+          <h2>5. Applications, offers &amp; bookings</h2>
           <p>
-            Match percentages shown on the platform are guidance based on genre, location and
-            other factors — they&rsquo;re not a guarantee of being booked. A booking is only
-            confirmed once a promoter completes payment through the platform; nothing is confirmed
-            by a message, verbal agreement, or shortlisting alone.
+            Where we show how a listing fits an artist&rsquo;s profile, it is information drawn from
+            the profile and the listing — not a score, and not a guarantee or a ranking: promoters
+            choose who to book. A promoter makes an offer; a booking is confirmed only when the
+            artist accepts that offer through the platform. The terms of the offer (date, times,
+            fee, travel contribution and fees) are fixed when it is made and shown to both sides.
+            Nothing is confirmed by a message, a verbal agreement, or shortlisting alone. After the
+            artist accepts, the promoter pays through the platform.
           </p>
         </section>
 
@@ -79,8 +82,11 @@ export default function TermsPage() {
             Payments are processed by Stripe. When a promoter books an artist, they pay the
             artist&rsquo;s agreed fee, any travel contribution, and a separate Support Slot
             booking fee — the booking fee is always paid by the promoter, never deducted from the
-            artist&rsquo;s fee. Payouts to artists are made to their own connected Stripe account;
-            Support Slot doesn&rsquo;t hold your funds or handle cash.
+            artist&rsquo;s fee. When a promoter pays, Stripe transfers the artist&rsquo;s share to the
+            artist&rsquo;s own connected Stripe account and later pays it to their bank on
+            Stripe&rsquo;s schedule. Support Slot isn&rsquo;t a bank or an escrow service and
+            doesn&rsquo;t hold funds in a separate account for a booking. Refunds and disputes are
+            reviewed by our team and handled through Stripe.
           </p>
           <p>
             You&rsquo;re responsible for any taxes arising from fees you receive through the
@@ -91,9 +97,11 @@ export default function TermsPage() {
         <section>
           <h2>7. Cancellations &amp; rescheduling</h2>
           <p>
-            Either party can cancel or propose a new date/time for a confirmed booking through the
-            platform. Repeated late cancellations may affect your account standing and visibility
-            in search results.
+            Either party can cancel a confirmed booking through the platform, giving a reason; the
+            other party is told straight away. If a payment had already been made, our team reviews
+            what happens to it — a refund is not automatic. Only the promoter can change the date or
+            times of a show; if they do, the artist is told and can cancel. Repeated late
+            cancellations may lead us to act on an account.
           </p>
         </section>
 
@@ -166,10 +174,10 @@ export default function TermsPage() {
         <section>
           <h2>14. Contact us</h2>
           <p>
-            Questions about these terms — email{" "}
-            <a href="mailto:hello@supportslot.example" className="underline hover:text-acid">
-              hello@supportslot.example
-            </a>
+            Questions about these terms — contact us through our{" "}
+            <Link href="/support" className="underline hover:text-acid">
+              support page
+            </Link>
             .
           </p>
         </section>

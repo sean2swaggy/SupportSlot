@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Logo from "@/components/layout/Logo";
 import Button from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
+import { nextFromLocation } from "@/lib/redirect";
 
 export default function MfaChallengePage() {
   const router = useRouter();
@@ -45,7 +46,7 @@ export default function MfaChallengePage() {
       setVerifyError(error.message);
       return;
     }
-    router.push("/");
+    router.push(nextFromLocation() ?? "/");
     router.refresh();
   };
 

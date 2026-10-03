@@ -6,63 +6,45 @@ import { useStore } from "@/lib/store";
 import Navbar from "@/components/layout/Navbar";
 import MobileNav from "@/components/layout/MobileNav";
 import Footer from "@/components/layout/Footer";
+import Button from "@/components/ui/Button";
+import { isAuthScreen, isPublicPath, isUnder, SUSPENDED_ALLOWED } from "@/lib/routes";
+import { loginUrlFor } from "@/lib/redirect";
 
 const ONBOARDING_PATH = "/onboarding";
-const LOGIN_PATH = "/login";
-const FORGOT_PASSWORD_PATH = "/forgot-password";
-// Kept in sync with PUBLIC_PATHS in src/lib/supabase/middleware.ts — these
-// must be reachable without an account (see that file for why).
-const PUBLIC_PATHS = ["/privacy", "/terms", "/trust"];
-// Same idea as onboarding below — these render bare, not because they're
-// unauthenticated but because the normal nav's links would all just bounce
-// straight back here (middleware.ts enforces the mandatory-2FA gate
-// regardless of what the client renders); showing full site chrome the
-// user can't actually use is confusing, not just redundant.
-const MFA_PATHS = ["/mfa-setup", "/mfa-challenge"];
+// Screens that render bare — no nav, no footer. Either the nav's links would
+// only bounce straight back (2FA), or the person is mid-flow (onboarding,
+// login, reset).
+const BARE_PATHS = ["/reset-password"];
 
 /**
- * Gates the whole app behind signup: until the signed-in account has
- * finished onboarding, every route bounces to /onboarding and none of the
- * normal site chrome (nav, footer) renders. The real enforcement is
- * middleware.ts (server-side, runs before this ever renders) — this is
- * defense-in-depth plus the client-side loading state while the session
- * hydrates, and it owns the "don't remount /onboarding mid-flow" guard
- * below, which middleware doesn't touch.
+ * The client shell. The real access control is src/proxy.ts (server-side,
+ * runs before any of this renders, using the same rules from lib/routes.ts);
+ * this adds the loading and failure states, the nav that matches who's
+ * looking (a visitor, an artist, a promoter), and the "don't remount
+ * /onboarding mid-flow" guard below.
  */
 export default function AppGate({ children }: { children: React.ReactNode }) {
-  const { hydrated, hasOnboarded } = useStore();
-  const pathname = usePathname();
+  const { hydrated, signedIn, hasOnboarded, suspended, loadError, reload } = useStore();
+  const pathname = usePathname() ?? "/";
   const router = useRouter();
-  const onOnboardingRoute = pathname?.startsWith(ONBOARDING_PATH) ?? false;
-  const onLoginRoute = pathname === LOGIN_PATH;
-  const onForgotPasswordRoute = pathname === FORGOT_PASSWORD_PATH;
-  const onPublicRoute = PUBLIC_PATHS.includes(pathname ?? "");
-  const onMfaRoute = MFA_PATHS.includes(pathname ?? "");
+  const onOnboardingRoute = pathname.startsWith(ONBOARDING_PATH);
+  const onAuthScreen = isAuthScreen(pathname) || BARE_PATHS.includes(pathname);
 
   useEffect(() => {
-    // /login, /forgot-password, and the public legal pages are exempt too —
-    // middleware.ts is the real authority on whether a signed-out (or
-    // not-yet-onboarded) visitor belongs there; this effect only needs to
-    // catch the signed-in-but-not-onboarded case elsewhere. Missing
-    // /forgot-password here previously bounced a signed-out visitor
-    // straight to /onboarding (then middleware bounced THAT to /login,
-    // since an unauthenticated /onboarding request isn't exempt there
-    // either) before they ever saw the page — confirmed live while
-    // building the password-reset flow this covers.
-    if (
-      hydrated &&
-      !hasOnboarded &&
-      !onOnboardingRoute &&
-      !onLoginRoute &&
-      !onForgotPasswordRoute &&
-      !onPublicRoute
-    ) {
-      router.replace(ONBOARDING_PATH);
+    if (!hydrated) return;
+    if (!signedIn) {
+      // The proxy has already redirected; this covers a session that expired
+      // while the tab sat open.
+      if (!isPublicPath(pathname) && !onAuthScreen) router.replace(loginUrlFor(pathname, window.location.search));
+      return;
     }
-  }, [hydrated, hasOnboarded, onOnboardingRoute, onLoginRoute, onForgotPasswordRoute, onPublicRoute, router]);
+    if (suspended && !isUnder(pathname, SUSPENDED_ALLOWED)) {
+      router.replace("/suspended");
+      return;
+    }
+    if (!hasOnboarded && !onOnboardingRoute && !isPublicPath(pathname)) router.replace(ONBOARDING_PATH);
+  }, [hydrated, signedIn, suspended, hasOnboarded, onOnboardingRoute, onAuthScreen, pathname, router]);
 
-  // Before we know whether this (mock) account has already signed up, show
-  // nothing but a bare mark rather than flashing the full app or the gate.
   if (!hydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -73,29 +55,28 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Always render onboarding bare (no nav/footer), whether or not it's
-  // finished yet — completeOnboarding() flips `hasOnboarded` to true partway
-  // through the flow (on the last step, before the "welcome" screen), and if
-  // that flip changed which layout wraps this route, React would remount
-  // the onboarding page's own subtree and wipe its in-progress step state.
-  // Keeping this route's chrome constant sidesteps that entirely; the
-  // gate still applies to every other route.
-  if (onOnboardingRoute) {
-    return <main className="min-h-screen">{children}</main>;
+  // Signed in, but their data couldn't be loaded. Never show an empty
+  // dashboard as if nothing existed.
+  if (signedIn && loadError) {
+    return (
+      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 text-center" role="alert">
+        <p className="font-display text-2xl">We couldn&rsquo;t load your account</p>
+        <p className="mt-2 text-sm text-paper-dim">{loadError}</p>
+        <Button className="mt-6" onClick={() => void reload()}>
+          Try again
+        </Button>
+      </div>
+    );
   }
 
-  if (!hasOnboarded) {
-    // Not onboarded and not already on /onboarding — the effect above is
-    // about to redirect there; render the same bare shell meanwhile so
-    // nothing else briefly flashes.
-    return <main className="min-h-screen">{children}</main>;
-  }
-
-  // Mandatory-2FA setup/challenge — bare shell, same reasoning as
-  // onboarding above. Each of these pages provides its own way to log out.
-  if (onMfaRoute) {
-    return <main className="min-h-screen">{children}</main>;
-  }
+  // Onboarding always renders bare, finished or not: completeOnboarding()
+  // flips `hasOnboarded` partway through (before the welcome screen), and if
+  // that changed which layout wraps this route React would remount the page
+  // and wipe the in-progress step.
+  if (onOnboardingRoute) return <main className="min-h-screen">{children}</main>;
+  if (onAuthScreen && pathname !== "/suspended") return <main className="min-h-screen">{children}</main>;
+  if (signedIn && !hasOnboarded && !isPublicPath(pathname)) return <main className="min-h-screen">{children}</main>;
+  if (signedIn && suspended) return <main className="min-h-screen">{children}</main>;
 
   return (
     <>

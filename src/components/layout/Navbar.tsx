@@ -10,10 +10,19 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { DEFAULT_FALLBACK } from "@/components/ui/AvatarUploadField";
 
+const visitorLinks = [
+  { href: "/discover", label: "Find a Slot" },
+  { href: "/last-minute", label: "Last-Minute" },
+  { href: "/trust", label: "Trust & Safety" },
+  { href: "/support", label: "Help" },
+];
+
 const artistLinks = [
   { href: "/discover", label: "Find a Slot" },
   { href: "/last-minute", label: "Last-Minute" },
+  { href: "/saved", label: "Saved" },
   { href: "/applications", label: "Applications" },
+  { href: "/messages", label: "Messages" },
   { href: "/requests", label: "Requests" },
 ];
 
@@ -33,8 +42,8 @@ const promoterLinks = [
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { role, artistAvatar, promoterAvatar } = useStore();
-  const links = role === "artist" ? artistLinks : promoterLinks;
+  const { role, signedIn, adminRole, unreadMessageCount, artistAvatar, promoterAvatar } = useStore();
+  const links = !signedIn ? visitorLinks : role === "artist" ? artistLinks : promoterLinks;
   const avatarSrc = (role === "artist" ? artistAvatar : promoterAvatar) || DEFAULT_FALLBACK;
 
   const handleLogout = async () => {
@@ -62,43 +71,63 @@ export default function Navbar() {
                 )}
               >
                 {l.label}
+                {l.href === "/messages" && unreadMessageCount > 0 && (
+                  <span className="ml-1.5 inline-flex min-w-4 items-center justify-center bg-acid px-1 text-[9px] font-bold text-acid-ink">
+                    {unreadMessageCount}
+                  </span>
+                )}
               </Link>
             ))}
           </nav>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:block">
-            {role === "artist" ? (
-              <Button href="/discover" variant="outline" size="sm">
-                Find Support Slots
-              </Button>
-            ) : (
-              <Button href="/create-slot" variant="primary" size="sm">
-                Post a Slot
-              </Button>
-            )}
+        {!signedIn ? (
+          <div className="flex items-center gap-3">
+            <Button href={`/login${pathname && pathname !== "/" ? `?next=${encodeURIComponent(pathname)}` : ""}`} variant="outline" size="sm">
+              Log in
+            </Button>
+            <Button href="/login?mode=signup" variant="primary" size="sm">
+              Sign up
+            </Button>
           </div>
-          <NotificationsPanel />
-          <Link
-            href={role === "artist" ? "/dashboard/artist" : "/dashboard/promoter"}
-            className="hidden sm:flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-ink-border hover:border-paper transition-colors"
-            aria-label="Your dashboard"
-          >
-            <img
-              src={avatarSrc}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          </Link>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="hidden sm:block font-mono text-[10px] uppercase tracking-widest text-paper-dim hover:text-signal transition-colors"
-          >
-            Log out
-          </button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:block">
+              {role === "artist" ? (
+                <Button href="/discover" variant="outline" size="sm">
+                  Find Support Slots
+                </Button>
+              ) : (
+                <Button href="/create-slot" variant="primary" size="sm">
+                  Post a Slot
+                </Button>
+              )}
+            </div>
+            <NotificationsPanel />
+            <Link
+              href={role === "artist" ? "/dashboard/artist" : "/dashboard/promoter"}
+              className="hidden sm:flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-ink-border hover:border-paper transition-colors"
+              aria-label="Your dashboard"
+            >
+              <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+            </Link>
+            <Link href="/settings" className="hidden sm:block font-mono text-[10px] uppercase tracking-widest text-paper-dim hover:text-paper transition-colors">
+              Settings
+            </Link>
+            {adminRole && (
+              <Link href="/admin" className="hidden sm:block font-mono text-[10px] uppercase tracking-widest text-acid hover:underline">
+                Admin
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="hidden sm:block font-mono text-[10px] uppercase tracking-widest text-paper-dim hover:text-signal transition-colors"
+            >
+              Log out
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

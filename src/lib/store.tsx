@@ -33,6 +33,7 @@ import {
   unsaveSlot,
 } from "@/lib/actions";
 import { fail, ok, type Result } from "@/lib/result";
+import { isSafeExternalUrl } from "@/lib/artist-links";
 import { friendlyError } from "@/lib/errors";
 import type {
   Application,
@@ -110,12 +111,12 @@ interface StoreShape {
   startSupportPlusCheckout: (period: "monthly" | "annual") => Promise<void>;
   openBillingPortal: () => Promise<void>;
   artistAvatar: string | null;
-  setArtistAvatar: (v: string | null) => Promise<void>;
+  setArtistAvatar: (v: string | null) => Promise<Result<void>>;
   promoterAvatar: string | null;
-  setPromoterAvatar: (v: string | null) => Promise<void>;
-  setArtistLinks: (v: ArtistLinksOverride) => Promise<void>;
+  setPromoterAvatar: (v: string | null) => Promise<Result<void>>;
+  setArtistLinks: (v: ArtistLinksOverride) => Promise<Result<void>>;
   artistMonthlyListeners: number | null;
-  setArtistMonthlyListeners: (v: number | null) => Promise<void>;
+  setArtistMonthlyListeners: (v: number | null) => Promise<Result<void>>;
   addSlot: (
     slot: Omit<SupportSlot, "id" | "promoterId" | "applicantCount" | "postedAt" | "status">
   ) => Promise<SupportSlot>;
@@ -476,25 +477,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const setArtistAvatar: StoreShape["setArtistAvatar"] = useCallback(
     async (v) => {
-      if (!user || !currentArtist) return;
+      if (!user || !currentArtist) return fail("not_authenticated");
+      const { error } = await supabase.from("artists").update({ image_url: v }).eq("id", user.id);
+      if (error) return fail(error, "We couldn't save your photo. Please try again.");
       setCurrentArtist({ ...currentArtist, image: v ?? "" });
-      await supabase.from("artists").update({ image_url: v }).eq("id", user.id);
+      return ok();
     },
     [supabase, user, currentArtist]
   );
 
   const setPromoterAvatar: StoreShape["setPromoterAvatar"] = useCallback(
     async (v) => {
-      if (!user || !currentPromoter) return;
+      if (!user || !currentPromoter) return fail("not_authenticated");
+      const { error } = await supabase.from("promoters").update({ avatar_url: v }).eq("id", user.id);
+      if (error) return fail(error, "We couldn't save your photo. Please try again.");
       setCurrentPromoter({ ...currentPromoter, avatar: v ?? "" });
-      await supabase.from("promoters").update({ avatar_url: v }).eq("id", user.id);
+      return ok();
     },
     [supabase, user, currentPromoter]
   );
 
   const setArtistLinks: StoreShape["setArtistLinks"] = useCallback(
     async (links) => {
-      if (!user || !currentArtist) return;
+      if (!user || !currentArtist) return fail("not_authenticated");
       const updates = {
         spotify_url: links.spotifyUrl?.trim() ?? "",
         instagram_url: links.instagramUrl?.trim() ?? "",
@@ -504,6 +509,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         youtube_url: links.youtubeUrl?.trim() || null,
         website_url: links.websiteUrl?.trim() || null,
       };
+      // Only http(s) links are ever stored, so nothing script-like can end up
+      // as a clickable link on a public profile.
+      for (const [label, value] of Object.entries(updates)) {
+        if (value && !isSafeExternalUrl(value)) {
+          return fail(`profile_invalid: the ${label.replace("_url", "")} link must start with https://`);
+        }
+      }
+      const { error } = await supabase.from("artists").update(updates).eq("id", user.id);
+      if (error) return fail(error, "We couldn't save your links. Please try again.");
       setCurrentArtist({
         ...currentArtist,
         spotifyUrl: updates.spotify_url,
@@ -514,16 +528,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         youtubeUrl: updates.youtube_url ?? undefined,
         websiteUrl: updates.website_url ?? undefined,
       });
-      await supabase.from("artists").update(updates).eq("id", user.id);
+      return ok();
     },
     [supabase, user, currentArtist]
   );
 
   const setArtistMonthlyListeners: StoreShape["setArtistMonthlyListeners"] = useCallback(
     async (v) => {
-      if (!user || !currentArtist) return;
+      if (!user || !currentArtist) return fail("not_authenticated");
+      const { error } = await supabase.from("artists").update({ monthly_listeners: v }).eq("id", user.id);
+      if (error) return fail(error, "We couldn't save that number. Please try again.");
       setCurrentArtist({ ...currentArtist, monthlyListeners: v ?? 0 });
-      await supabase.from("artists").update({ monthly_listeners: v }).eq("id", user.id);
+      return ok();
     },
     [supabase, user, currentArtist]
   );

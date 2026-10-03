@@ -408,6 +408,7 @@ export function toMessageThread(
   opts: {
     viewerRole: "artist" | "promoter";
     viewerId: string;
+    withId: string;
     withName: string;
     withImage: string;
   }
@@ -426,6 +427,7 @@ export function toMessageThread(
   return {
     id: row.id,
     applicationId: row.application_id ?? undefined,
+    withId: opts.withId,
     withName: opts.withName,
     withImage: opts.withImage,
     context: row.context ?? "",

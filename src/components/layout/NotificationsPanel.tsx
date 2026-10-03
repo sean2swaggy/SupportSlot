@@ -14,7 +14,22 @@ const ICONS: Record<string, string> = {
   message: "✉",
   availability_request: "◐",
   availability_response: "◑",
+  offer: "◆",
+  offer_accepted: "✓",
+  offer_declined: "✕",
+  application_declined: "○",
+  application_withdrawn: "○",
+  booking_cancelled: "✕",
+  listing_changed: "↻",
+  payment_received: "£",
+  payment_failed: "!",
+  refund: "£",
+  dispute: "!",
+  subscription: "★",
+  report_update: "⚑",
+  system: "•",
 };
+const WARN = new Set(["urgent", "payment_failed", "dispute", "booking_cancelled"]);
 
 export default function NotificationsPanel() {
   const { notifications, unreadNotificationCount, markNotificationRead, markAllNotificationsRead } =
@@ -34,7 +49,8 @@ export default function NotificationsPanel() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        aria-label="Notifications"
+        aria-label={unreadNotificationCount > 0 ? `Notifications, ${unreadNotificationCount} unread` : "Notifications"}
+        aria-expanded={open}
         className="relative flex h-9 w-9 items-center justify-center border border-ink-border hover:border-paper transition-colors"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -76,7 +92,7 @@ export default function NotificationsPanel() {
             {notifications.map((n) => (
               <Link
                 key={n.id}
-                href={n.href ?? "#"}
+                href={n.href ?? "/"}
                 onClick={() => {
                   markNotificationRead(n.id);
                   setOpen(false);
@@ -89,7 +105,7 @@ export default function NotificationsPanel() {
                 <span
                   className={cn(
                     "mt-0.5 font-mono text-sm",
-                    n.type === "urgent" ? "text-signal" : "text-acid"
+                    WARN.has(n.type) ? "text-signal" : "text-acid"
                   )}
                 >
                   {ICONS[n.type] ?? "•"}

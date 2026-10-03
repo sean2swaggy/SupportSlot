@@ -15,5 +15,9 @@ export default function ArtistMonthlyListenersLabel({
   artist: Artist;
   className?: string;
 }) {
-  return <span className={className}>{formatNumber(artist.monthlyListeners)}</span>;
+  return (
+    <span className={className} title="Self-reported by the artist; not verified by Support Slot">
+      {formatNumber(artist.monthlyListeners)}
+    </span>
+  );
 }

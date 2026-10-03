@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_FALLBACK } from "@/components/ui/AvatarUploadField";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { SupportSlot, Venue } from "@/lib/types";
@@ -33,7 +34,7 @@ export default function SlotCard({
     >
       <div className="relative aspect-[16/10] overflow-hidden border-b border-ink-border">
         <img
-          src={slot.headlinerImage}
+          src={slot.headlinerImage || DEFAULT_FALLBACK}
           alt={slot.headliner}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />

@@ -8,29 +8,23 @@ import Link from "next/link";
 // protected: someone who "reported" a scammer or "blocked" a harasser here
 // had done neither, while believing they had.
 //
-// The real reporting/blocking backend does exist (reports and
-// promoter_blocks tables, RLS-scoped to the reporting artist — see
-// blockPromoter/reportUser in src/lib/queries.ts) but only in the
-// signed-in app, attached to a specific promoter/message/request — this
-// page is public and has no specific listing in view, so there's nothing
-// concrete for a contextless demo here to actually submit. Pointing to the
-// real, working entry points instead of faking one.
+// Reporting and blocking now exist for real (ReportModal → submit_report,
+// reviewed at /admin). This page is public and has no specific listing in
+// view, so it points to the working entry points instead of faking one.
 export default function ReportBlockDemo() {
   return (
     <div className="text-sm text-paper-dim space-y-2">
       <p>
-        Report or block someone directly from wherever you see them — a promoter&rsquo;s
-        availability request, a message thread, or your{" "}
-        <Link href="/requests" className="underline hover:text-paper">
-          Requests
-        </Link>{" "}
-        page. Every report goes to our trust &amp; safety team; a block is silent and immediate.
+        Use <span className="text-paper">Report</span> on a listing page, in a conversation, or on an availability request. Reports
+        go to our team and you get a reference when it&rsquo;s received. Artists can also{" "}
+        <span className="text-paper">block</span> a promoter from a conversation, which stops them messaging or inviting you.
       </p>
       <p>
-        <Link href="/login" className="underline hover:text-paper">
-          Sign in
-        </Link>{" "}
-        to use either from an account.
+        Locked out, or something to raise that isn&rsquo;t about one listing or person? Use our{" "}
+        <Link href="/support" className="underline hover:text-paper">
+          support form
+        </Link>
+        .
       </p>
     </div>
   );

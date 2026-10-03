@@ -58,7 +58,9 @@ export default function AvatarUploadField({
 }: {
   value: string | null;
   fallbackSrc?: string;
-  onChange: (dataUrl: string | null) => void;
+  // May report a failed save; the field then shows the reason instead of
+  // silently keeping a photo that wasn't stored.
+  onChange: (dataUrl: string | null) => void | Promise<{ ok: boolean; error?: string } | void>;
   alt?: string;
   size?: number;
   className?: string;
@@ -81,7 +83,8 @@ export default function AvatarUploadField({
     setBusy(true);
     try {
       const dataUrl = await cropToSquareDataUrl(file);
-      onChange(dataUrl);
+      const result = await onChange(dataUrl);
+      if (result && result.ok === false) setError(result.error ?? "We couldn't save that photo.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't process that image.");
     } finally {

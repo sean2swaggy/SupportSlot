@@ -59,7 +59,7 @@ export default function SlotDetailClient({
   return (
     <div>
       <div className="relative aspect-[16/9] sm:aspect-[21/9] w-full overflow-hidden border-b border-ink-border">
-        <img src={slot.headlinerImage} alt={slot.headliner} className="h-full w-full object-cover" />
+        <img src={slot.headlinerImage || DEFAULT_FALLBACK} alt={slot.headliner} className="h-full w-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 mx-auto max-w-[1400px] w-full px-4 sm:px-6 lg:px-10 pb-8">
           <Link

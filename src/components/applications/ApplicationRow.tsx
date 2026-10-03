@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_FALLBACK } from "@/components/ui/AvatarUploadField";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Application, SupportSlot, Venue } from "@/lib/types";
@@ -51,7 +52,7 @@ export default function ApplicationRow({ application }: { application: Applicati
         className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 hover:bg-ink-card/60 transition-colors"
       >
         <div className="h-16 w-16 sm:h-14 sm:w-14 shrink-0 overflow-hidden border border-ink-border">
-          <img src={slot.headlinerImage} alt="" className="h-full w-full object-cover" />
+          <img src={slot.headlinerImage || DEFAULT_FALLBACK} alt="" className="h-full w-full object-cover" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-display text-lg truncate">{slot.headliner}</p>

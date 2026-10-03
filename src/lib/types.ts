@@ -330,6 +330,7 @@ export interface EventTemplate {
 export interface MessageThread {
   id: string;
   applicationId?: string;
+  withId: string; // the other participant's profile id
   withName: string;
   withImage: string;
   context: string; // e.g. slot/show name

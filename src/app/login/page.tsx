@@ -8,11 +8,13 @@ import Button from "@/components/ui/Button";
 import PasswordStrengthMeter from "@/components/account/PasswordStrengthMeter";
 import { createClient } from "@/lib/supabase/client";
 import { isPasswordAcceptable } from "@/lib/password";
+import { safeNextPath } from "@/lib/redirect";
 import { cn } from "@/lib/utils";
 
 function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
+  const nextPath = safeNextPath(params.get("next"));
   const [mode, setMode] = useState<"login" | "signup">(
     params.get("mode") === "signup" ? "signup" : "login"
   );
@@ -59,7 +61,8 @@ function LoginInner() {
           password,
           options: {
             data: { role: type },
-            emailRedirectTo: `${window.location.origin}/auth/callback`,
+            // Carry where they were headed through the confirmation email.
+            emailRedirectTo: `${window.location.origin}/auth/callback${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`,
           },
         });
         if (signUpError) {
@@ -72,7 +75,7 @@ function LoginInner() {
           return;
         }
         if (data.session) {
-          router.push("/onboarding");
+          router.push(nextPath ? `/onboarding?next=${encodeURIComponent(nextPath)}` : "/onboarding");
         } else {
           // No session yet — this project requires confirming the email
           // first. The confirmation link routes through /auth/callback,
@@ -89,7 +92,7 @@ function LoginInner() {
       }
       // middleware.ts sends them to /onboarding or the right dashboard
       // depending on profile state — no need to duplicate that logic here.
-      router.push("/");
+      router.push(nextPath ?? "/");
       router.refresh();
     } finally {
       setSubmitting(false);
@@ -280,19 +283,6 @@ function LoginInner() {
           {submitting ? "Please wait…" : mode === "login" ? "Log in" : "Continue"}
         </Button>
       </form>
-
-      {mode === "signup" && type === "artist" && (
-        <>
-          <div className="my-6 flex items-center gap-3">
-            <span className="h-px flex-1 bg-ink-border" />
-            <span className="font-mono text-[10px] uppercase tracking-widest text-paper-dim">or</span>
-            <span className="h-px flex-1 bg-ink-border" />
-          </div>
-          <Button variant="outline" size="lg" className="w-full" disabled>
-            Continue with Spotify (coming soon)
-          </Button>
-        </>
-      )}
 
       {mode === "login" && (
         <p className="mt-8 text-center text-xs text-paper-dim">

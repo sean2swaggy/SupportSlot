@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { callbackNextPath } from "@/lib/redirect";
 
 // Supabase redirects here after a user clicks a confirmation link in an
 // email it sent — signup confirmation (see emailRedirectTo in
@@ -19,8 +20,7 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next");
-  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/onboarding";
+  const safeNext = callbackNextPath(searchParams.get("next"));
 
   if (code) {
     const supabase = await createClient();

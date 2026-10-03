@@ -33,6 +33,7 @@ export default function ArtistLinksEditor({ artist }: { artist: Artist }) {
   const [draft, setDraft] = useState<ArtistLinksOverride>(() => linksOf(artist));
   const [savedPulse, setSavedPulse] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleChange = (key: LinkPlatform, value: string) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -41,8 +42,13 @@ export default function ArtistLinksEditor({ artist }: { artist: Artist }) {
 
   const handleSave = async () => {
     setSaving(true);
-    await setArtistLinks(draft);
+    setError(null);
+    const result = await setArtistLinks(draft);
     setSaving(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
     setSavedPulse(true);
     setTimeout(() => setSavedPulse(false), 2000);
   };
@@ -77,6 +83,11 @@ export default function ArtistLinksEditor({ artist }: { artist: Artist }) {
           <span className="font-mono text-[10px] uppercase tracking-widest text-ok">Saved ✓</span>
         )}
       </div>
+      {error && (
+        <p className="mt-3 text-sm text-signal" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

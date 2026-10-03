@@ -422,8 +422,8 @@ export async function getMessageThreads(
     : { data: [] as MessageRow[] };
 
   return threadRows.map((t) => {
-    const artist = (t as unknown as { artists: { name: string; image_url: string | null } | null }).artists;
-    const promoter = (t as unknown as { promoters: { company: string; avatar_url: string | null } | null })
+    const artist = (t as unknown as { artists: { id: string; name: string; image_url: string | null } | null }).artists;
+    const promoter = (t as unknown as { promoters: { id: string; company: string; avatar_url: string | null } | null })
       .promoters;
     const withName = viewer.role === "artist" ? promoter?.company ?? "" : artist?.name ?? "";
     const withImage = viewer.role === "artist" ? promoter?.avatar_url ?? "" : artist?.image_url ?? "";
@@ -432,6 +432,7 @@ export async function getMessageThreads(
     return toMessageThread(t as unknown as MessageThreadRow, messages, {
       viewerRole: viewer.role,
       viewerId: viewer.id,
+      withId: (viewer.role === "artist" ? promoter?.id : artist?.id) ?? "",
       withName,
       withImage,
     });
@@ -766,6 +767,29 @@ export async function unblockPromoter(supabase: SupabaseClient, artistId: string
     .eq("artist_id", artistId)
     .eq("promoter_id", promoterId);
   return !error;
+}
+
+export async function getBlockedPromoters(
+  supabase: SupabaseClient,
+  artistId: string
+): Promise<Array<{ promoterId: string; company: string }>> {
+  const { data, error } = await supabase
+    .from("promoter_blocks")
+    .select("promoter_id, promoters(company)")
+    .eq("artist_id", artistId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => ({
+    promoterId: r.promoter_id as string,
+    company: (r as unknown as { promoters: { company: string } | null }).promoters?.company ?? "A promoter",
+  }));
+}
+
+export async function getSlotsByIds(supabase: SupabaseClient, ids: string[]): Promise<SupportSlot[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase.from("slots").select(SLOT_WITH_VENUE_COLUMNS).in("id", ids);
+  if (error) throw new Error(error.message);
+  return (data as unknown as SlotRow[]).map(toSlot);
 }
 
 export async function isPromoterBlocked(supabase: SupabaseClient, artistId: string, promoterId: string): Promise<boolean> {
