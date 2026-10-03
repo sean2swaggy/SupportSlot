@@ -1124,7 +1124,7 @@ export async function getConfirmedArtistsForSlot(supabase: SupabaseClient, slotI
     .from("applications")
     .select(`artist_id, artists(${ARTIST_COLUMNS})`)
     .eq("slot_id", slotId)
-    .eq("status", "booked");
+    .eq("status", "confirmed");
   if (error || !data) return [];
   return data.filter((row) => row.artists).map((row) => toArtist(row.artists as unknown as ArtistRow));
 }
