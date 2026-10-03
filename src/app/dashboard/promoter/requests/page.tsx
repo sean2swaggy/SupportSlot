@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useStore } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
 import {
-  bookFromAvailabilityResponse,
+  createGigInvitation,
   getAvailabilityRequestsForPromoter,
   getRoster,
   getSlotsForPromoter,
@@ -15,9 +15,9 @@ import {
 import { DEFAULT_FALLBACK } from "@/components/ui/AvatarUploadField";
 import Button from "@/components/ui/Button";
 import RequestComposerModal from "@/components/requests/RequestComposerModal";
-import BookModal from "@/components/BookModal";
+import { friendlyError } from "@/lib/errors";
 import { isRequestExpired } from "@/lib/availability";
-import type { Application, AvailabilityRequestWithRecipients, RosterEntry, SupportSlot } from "@/lib/types";
+import type { AvailabilityRequestWithRecipients, RosterEntry, SupportSlot } from "@/lib/types";
 
 export default function PromoterRequestsPage() {
   const { currentPromoterId, isSupportPlus } = useStore();
@@ -26,7 +26,6 @@ export default function PromoterRequestsPage() {
   const [mySlots, setMySlots] = useState<SupportSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [composerOpen, setComposerOpen] = useState(false);
-  const [bookTarget, setBookTarget] = useState<{ artist: RosterEntry["artist"]; slot: SupportSlot; application: Application } | null>(null);
 
   const load = () => {
     if (!currentPromoterId) return;
@@ -64,8 +63,8 @@ export default function PromoterRequestsPage() {
           </h1>
           <p className="mt-3 max-w-[62ch] text-paper-dim">
             Ask roster artists if they&rsquo;re free before you commit to a booking. An
-            &ldquo;available&rdquo; reply is guidance, not a reservation — you still book and pay
-            through the normal flow.
+            &ldquo;available&rdquo; reply is guidance, not a reservation — you still invite them to apply,
+            make an offer and pay through the normal flow.
           </p>
         </div>
         {isSupportPlus ? (
@@ -100,7 +99,7 @@ export default function PromoterRequestsPage() {
               expired={isRequestExpired(req)}
               mySlots={mySlots}
               onChanged={load}
-              onBook={(artist, slot, application) => setBookTarget({ artist, slot, application })}
+              promoterId={currentPromoterId ?? ""}
             />
           ))
         )}
@@ -114,15 +113,6 @@ export default function PromoterRequestsPage() {
         onSent={load}
       />
 
-      {bookTarget && (
-        <BookModal
-          open={!!bookTarget}
-          onClose={() => setBookTarget(null)}
-          artist={bookTarget.artist}
-          slot={bookTarget.slot}
-          application={bookTarget.application}
-        />
-      )}
     </div>
   );
 }
@@ -132,13 +122,13 @@ function RequestCard({
   expired,
   mySlots,
   onChanged,
-  onBook,
+  promoterId,
 }: {
   request: AvailabilityRequestWithRecipients;
   expired: boolean;
   mySlots: SupportSlot[];
   onChanged: () => void;
-  onBook: (artist: RosterEntry["artist"], slot: SupportSlot, application: Application) => void;
+  promoterId: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [pickingSlotFor, setPickingSlotFor] = useState<string | null>(null);
@@ -157,20 +147,26 @@ function RequestCard({
     setBusy(false);
   };
 
-  const linkSlotAndBook = async (recipientId: string, artist: RosterEntry["artist"], slotId: string) => {
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  // An availability reply is guidance, never a booking. The next step is to
+  // invite the artist to apply to a real listing; they apply, you make an
+  // offer, they accept, you pay — the same path as everyone else.
+  const linkSlotAndInvite = async (recipientId: string, artist: RosterEntry["artist"], slotId: string) => {
     const supabase = createClient();
+    setInviteError(null);
+    setBusy(true);
+    const invite = await createGigInvitation(supabase, { slotId, promoterId, artistId: artist.id });
+    if (!invite.ok) {
+      setInviteError(friendlyError(invite.error, "We couldn't send that invitation."));
+      setBusy(false);
+      return;
+    }
     await supabase.from("availability_requests").update({ linked_slot_id: slotId }).eq("id", request.id);
-    const slot = mySlots.find((s) => s.id === slotId);
-    if (!slot) return;
-    const result = await bookFromAvailabilityResponse(supabase, {
-      requestId: request.id,
-      recipientId,
-      artist,
-      slot,
-    });
+    void recipientId;
     setPickingSlotFor(null);
+    setBusy(false);
     onChanged();
-    if (result.ok) onBook(artist, slot, result.application);
   };
 
   const statusLabel =
@@ -205,7 +201,8 @@ function RequestCard({
 
       <div className="mt-4 divide-y divide-ink-border border-t border-ink-border">
         {request.recipients.map((r) => {
-          const alreadyBooked = r.linkedApplicationStatus === "booked";
+          const alreadyBooked = r.linkedApplicationStatus === "confirmed";
+          const applied = !!r.linkedApplicationStatus && !alreadyBooked;
           return (
             <div key={r.id} className="flex items-center justify-between gap-3 py-3">
               <div className="flex items-center gap-3 min-w-0">
@@ -225,17 +222,19 @@ function RequestCard({
                 <div className="shrink-0">
                   {alreadyBooked ? (
                     <span className="font-mono text-[10px] uppercase tracking-widest text-ok">Booked ✓</span>
+                  ) : applied ? (
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-acid">Applied</span>
                   ) : pickingSlotFor === r.id ? (
                     <select
                       autoFocus
-                      onChange={(e) => e.target.value && linkSlotAndBook(r.id, r.artist, e.target.value)}
+                      onChange={(e) => e.target.value && linkSlotAndInvite(r.id, r.artist, e.target.value)}
                       defaultValue=""
                       className="border border-ink-border bg-transparent px-2 py-1.5 text-xs outline-none"
                     >
                       <option value="" disabled>
                         Pick a slot…
                       </option>
-                      {mySlots.map((s) => (
+                      {mySlots.filter((s) => s.status === "open").map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.headliner} · {s.date}
                         </option>
@@ -247,7 +246,7 @@ function RequestCard({
                       onClick={() => setPickingSlotFor(r.id)}
                       className="font-mono text-[10px] uppercase tracking-widest border border-acid text-acid px-3 py-2 hover:bg-acid hover:text-acid-ink transition-colors"
                     >
-                      Book
+                      Invite to apply
                     </button>
                   )}
                 </div>
@@ -257,6 +256,11 @@ function RequestCard({
         })}
       </div>
 
+      {inviteError && (
+        <p className="mt-3 text-sm text-signal" role="alert">
+          {inviteError}
+        </p>
+      )}
       {request.status === "sent" && !expired && (
         <div className="mt-4 flex gap-3">
           <button
@@ -279,7 +283,7 @@ function RequestCard({
       )}
       {mySlots.length === 0 && request.recipients.some((r) => r.response === "available") && (
         <p className="mt-3 text-[11px] text-paper-dim">
-          To book, you&rsquo;ll need a posted slot for this show first —{" "}
+          To invite an artist, you&rsquo;ll need an open listing for this show first —{" "}
           <Link href="/create-slot" className="underline hover:text-paper">
             post one
           </Link>

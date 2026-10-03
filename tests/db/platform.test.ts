@@ -381,3 +381,45 @@ describe("abuse limiter", () => {
     await expect(asUser(db, p, (tx) => tx.query(`select public.rate_limit_hit('x', 1, 60)`))).rejects.toThrow(/permission denied/);
   });
 });
+
+describe("needed-tonight alerts", () => {
+  const urgentSlot = (promoter: string, city: string) =>
+    asService(db, async (tx) => {
+      const r = await tx.query<{ id: string }>(
+        `insert into public.slots
+           (promoter_id, venue_id, headliner, city, date, doors_time, set_time, performance_length_mins,
+            expected_attendance, support_fee, application_deadline, genres, is_urgent)
+         values ($1, (select id from public.venues limit 1), 'Tonight Show', $2, '2099-12-01', '19:00', '20:00', 30, 200, 100, '2099-11-30', '{Indie}', true)
+         returning id`,
+        [promoter, city]
+      );
+      return r.rows[0].id;
+    });
+  const urgentCount = async (artist: string) =>
+    Number((await db.query<{ n: string }>(`select count(*) n from public.notifications where profile_id = $1 and type = 'urgent'`, [artist])).rows[0].n);
+
+  it("notifies only opted-in artists whose travel radius covers the city, and not artists who blocked the promoter", async () => {
+    const promoter = await makePromoter(db);
+    const near = await makeArtist(db, { location: "London" });
+    const far = await makeArtist(db, { location: "Leeds" });
+    const optedOut = await makeArtist(db, { location: "London" });
+    const blocker = await makeArtist(db, { location: "London" });
+    await asService(db, async (tx) => {
+      await tx.query(`update public.artists set last_minute_alerts = true, travel_radius_miles = 50 where id = any($1)`, [[near, far, blocker]]);
+      await tx.query(`insert into public.promoter_blocks (artist_id, promoter_id) values ($1, $2)`, [blocker, promoter]);
+    });
+    await urgentSlot(promoter, "London");
+    expect(await urgentCount(near)).toBe(1);
+    expect(await urgentCount(far)).toBe(0); // Leeds is outside a 50-mile radius of London
+    expect(await urgentCount(optedOut)).toBe(0);
+    expect(await urgentCount(blocker)).toBe(0);
+  });
+
+  it("a non-urgent listing sends nothing", async () => {
+    const promoter = await makePromoter(db);
+    const artist = await makeArtist(db, { location: "London" });
+    await asService(db, (tx) => tx.query(`update public.artists set last_minute_alerts = true where id = $1`, [artist]));
+    await makeSlot(db, promoter, { city: "London" });
+    expect(await urgentCount(artist)).toBe(0);
+  });
+});

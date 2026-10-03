@@ -15,15 +15,29 @@ import {
   getApplicationsForArtist,
   getApplicationsForPromoterSlots,
   getArtist,
+  getArtistBookings,
   getMessageThreads,
   getNotifications,
   getPromoter,
+  getPromoterBookings,
+  SLOT_WITH_VENUE_COLUMNS,
 } from "@/lib/queries";
-import { toApplication, toSlot } from "@/lib/supabase/mappers";
+import { toSlot, type SlotRow } from "@/lib/supabase/mappers";
+import {
+  applyToSlot,
+  getSavedSlotIds,
+  markThreadRead as markThreadReadAction,
+  saveSlot,
+  sendMessageRow,
+  setEmailNotifications,
+  unsaveSlot,
+} from "@/lib/actions";
+import { fail, ok, type Result } from "@/lib/result";
+import { friendlyError } from "@/lib/errors";
 import type {
   Application,
-  ApplicationStatus,
   Artist,
+  Booking,
   MessageThread,
   NotificationItem,
   Promoter,
@@ -57,29 +71,42 @@ interface StoreShape {
   currentPromoterId: string;
   currentArtist: Artist | null;
   currentPromoter: Promoter | null;
+  signedIn: boolean;
+  userId: string | null;
+  // Set when the first load of the signed-in user's data failed — screens
+  // show a retry rather than a misleading empty state.
+  loadError: string | null;
+  reload: () => Promise<void>;
+  suspended: boolean;
+  adminRole: "moderator" | "admin" | null;
   applications: Application[];
-  addApplication: (app: {
-    slotId: string;
-    featuredTrackId: string;
-    message?: string;
-    matchPercent: number;
-  }) => Promise<void>;
-  updateApplicationStatus: (id: string, status: ApplicationStatus) => Promise<void>;
-  syncApplicationStatus: (id: string, status: ApplicationStatus) => void;
+  bookings: Booking[];
+  apply: (input: { slotId: string; featuredTrackId?: string; message?: string }) => Promise<Result<{ id: string }>>;
+  // Re-reads applications, bookings and notifications from the database after
+  // any change made through a SQL function, so every screen shows the truth.
   refreshApplications: () => Promise<void>;
+  savedSlotIds: string[];
+  toggleSavedSlot: (slotId: string) => Promise<Result<boolean>>;
+  emailNotifications: boolean;
+  setEmailNotificationsPref: (enabled: boolean) => Promise<Result<void>>;
   notifications: NotificationItem[];
   unreadNotificationCount: number;
   markNotificationRead: (id: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
   messageThreads: MessageThread[];
-  sendMessage: (threadId: string, text: string) => Promise<void>;
+  sendMessage: (threadId: string, text: string) => Promise<Result<void>>;
+  markThreadRead: (threadId: string) => Promise<void>;
+  refreshThreads: () => Promise<void>;
   unreadMessageCount: number;
   lastMinuteAlertsEnabled: boolean;
-  setLastMinuteAlertsEnabled: (v: boolean) => Promise<void>;
+  setLastMinuteAlertsEnabled: (v: boolean) => Promise<Result<void>>;
   // Promoter-only. Server-verified — see 0010_promoter_support_plus.sql;
   // there is no client setter for either of these two.
   isSupportPlus: boolean;
   supportPlusBillingPeriod: "monthly" | "annual";
+  supportPlusStatus: string | null;
+  supportPlusPeriodEnd: string | null;
+  supportPlusCancelAtPeriodEnd: boolean;
   startSupportPlusCheckout: (period: "monthly" | "annual") => Promise<void>;
   openBillingPortal: () => Promise<void>;
   artistAvatar: string | null;
@@ -92,10 +119,6 @@ interface StoreShape {
   addSlot: (
     slot: Omit<SupportSlot, "id" | "promoterId" | "applicantCount" | "postedAt" | "status">
   ) => Promise<SupportSlot>;
-  rescheduleSlot: (
-    slotId: string,
-    updates: { date: string; doorsTime: string; setTime: string }
-  ) => Promise<void>;
   accountEmail: string | null;
   emailVerified: boolean;
   markEmailVerified: (email: string) => void;
@@ -134,6 +157,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [messageThreads, setMessageThreads] = useState<MessageThread[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [savedSlotIds, setSavedSlotIds] = useState<string[]>([]);
+  const [emailNotifications, setEmailNotificationsState] = useState(true);
+  const [suspended, setSuspended] = useState(false);
+  const [adminRole, setAdminRole] = useState<"moderator" | "admin" | null>(null);
+  const [supportPlusStatus, setSupportPlusStatus] = useState<string | null>(null);
+  const [supportPlusPeriodEnd, setSupportPlusPeriodEnd] = useState<string | null>(null);
+  const [supportPlusCancelAtPeriodEnd, setSupportPlusCancelAtPeriodEnd] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   const [emailVerified, setEmailVerified] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -152,7 +184,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role, has_onboarded, is_support_plus, support_plus_billing_period")
+        .select(
+          "role, has_onboarded, is_support_plus, support_plus_billing_period, support_plus_status, support_plus_current_period_end, support_plus_cancel_at_period_end, email_notifications, suspended_at, admin_role"
+        )
         .eq("id", authUser.id)
         .maybeSingle();
 
@@ -163,6 +197,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setSupportPlusBillingPeriodState(
         (profile?.support_plus_billing_period as "monthly" | "annual" | null) ?? "monthly"
       );
+      setSupportPlusStatus((profile?.support_plus_status as string | null) ?? null);
+      setSupportPlusPeriodEnd((profile?.support_plus_current_period_end as string | null) ?? null);
+      setSupportPlusCancelAtPeriodEnd(!!profile?.support_plus_cancel_at_period_end);
+      setEmailNotificationsState(profile?.email_notifications ?? true);
+      setSuspended(!!profile?.suspended_at);
+      setAdminRole((profile?.admin_role as "moderator" | "admin" | null) ?? null);
 
       if (!profile?.has_onboarded) {
         // Nothing else to load yet — the artist/promoter row doesn't exist
@@ -172,24 +212,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
 
       if (resolvedRole === "artist") {
-        const [artist, apps, notifs, threads] = await Promise.all([
+        const [artist, apps, notifs, threads, bookingsResult, saved] = await Promise.all([
           getArtist(supabase, authUser.id),
           getApplicationsForArtist(supabase, authUser.id),
           getNotifications(supabase, authUser.id),
           getMessageThreads(supabase, { role: "artist", id: authUser.id }),
+          getArtistBookings(supabase, authUser.id),
+          getSavedSlotIds(supabase, authUser.id),
         ]);
+        if (!artist) throw new Error("profile_load_failed");
         setCurrentArtist(artist);
         setCurrentPromoter(null);
         setApplications(apps);
+        setBookings(bookingsResult.ok ? bookingsResult.data : []);
+        setSavedSlotIds(saved);
         setNotifications(notifs);
         setMessageThreads(threads);
       } else {
-        const [promoter, apps, notifs, threads] = await Promise.all([
+        const [promoter, apps, notifs, threads, bookingsResult, saved] = await Promise.all([
           getPromoter(supabase, authUser.id),
           getApplicationsForPromoterSlots(supabase, authUser.id),
           getNotifications(supabase, authUser.id),
           getMessageThreads(supabase, { role: "promoter", id: authUser.id }),
+          getPromoterBookings(supabase, authUser.id),
+          getSavedSlotIds(supabase, authUser.id),
         ]);
+        if (!promoter) throw new Error("profile_load_failed");
+        setBookings(bookingsResult.ok ? bookingsResult.data : []);
+        setSavedSlotIds(saved);
         setCurrentPromoter(promoter);
         setCurrentArtist(null);
         setApplications(
@@ -203,10 +253,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setMessageThreads(threads);
       }
 
+      setLoadError(null);
       setHydrated(true);
     },
     [supabase]
   );
+
+  // loadForUser can fail (network, a policy error). Never leave the app on
+  // the splash screen or quietly show empty data: record the failure so
+  // screens can offer a retry.
+  const runLoad = useCallback(
+    async (authUser: User) => {
+      try {
+        await loadForUser(authUser);
+      } catch (err) {
+        console.error("Couldn't load account data", err);
+        setLoadError(friendlyError(err, "We couldn't load your account just now."));
+        setHydrated(true);
+      }
+    },
+    [loadForUser]
+  );
+
+  const reload = useCallback(async () => {
+    if (user) {
+      setLoadError(null);
+      await runLoad(user);
+    }
+  }, [user, runLoad]);
 
   useEffect(() => {
     let cancelled = false;
@@ -215,7 +289,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       if (data.user) {
         setUser(data.user);
-        loadForUser(data.user);
+        runLoad(data.user);
       } else {
         setHydrated(true);
       }
@@ -227,10 +301,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       setUser(session?.user ?? null);
       if (session?.user) {
-        loadForUser(session.user);
+        runLoad(session.user);
       } else {
         setCurrentArtist(null);
         setCurrentPromoter(null);
+        setBookings([]);
+        setSavedSlotIds([]);
+        setSuspended(false);
+        setAdminRole(null);
         setApplications([]);
         setNotifications([]);
         setMessageThreads([]);
@@ -246,58 +324,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const addApplication: StoreShape["addApplication"] = useCallback(
-    async (app) => {
-      if (!user) return;
-      const { data, error } = await supabase
-        .from("applications")
-        .insert({
-          slot_id: app.slotId,
-          artist_id: user.id,
-          featured_track_id: app.featuredTrackId || null,
-          message: app.message,
-          match_percent: app.matchPercent,
-        })
-        .select(
-          "id, slot_id, artist_id, status, featured_track_id, message, match_percent, submitted_at"
-        )
-        .single();
-      if (error || !data) return;
-      setApplications((prev) => [toApplication(data), ...prev]);
-    },
-    [supabase, user]
-  );
-
-  const updateApplicationStatus: StoreShape["updateApplicationStatus"] = useCallback(
-    async (id, status) => {
-      const { data, error } = await supabase
-        .from("applications")
-        .update({ status })
-        .eq("id", id)
-        .select(
-          "id, slot_id, artist_id, status, featured_track_id, message, match_percent, submitted_at"
-        )
-        .single();
-      if (error || !data) return;
-      const mapped = toApplication(data);
-      setApplications((prev) => prev.map((a) => (a.id === id ? mapped : a)));
-    },
-    [supabase]
-  );
-
-  // For applications created outside the normal addApplication path — e.g.
-  // accepting a gig invitation writes the row directly (see
-  // respondToGigInvitation in lib/queries.ts) so it never passes through
-  // addApplication's own setApplications call. Re-fetches instead of
-  // trying to splice one row in, since a promoter's `applications` list is
-  // actually a join across all their slots, not a single insert response.
+  // Re-reads everything a state change can touch. Called after every action
+  // that goes through a SQL function (and by the live refresh below).
   const refreshApplications: StoreShape["refreshApplications"] = useCallback(async () => {
     if (!user) return;
     if (role === "artist") {
-      const apps = await getApplicationsForArtist(supabase, user.id);
+      const [apps, bookingsResult, notifs] = await Promise.all([
+        getApplicationsForArtist(supabase, user.id),
+        getArtistBookings(supabase, user.id),
+        getNotifications(supabase, user.id),
+      ]);
       setApplications(apps);
+      if (bookingsResult.ok) setBookings(bookingsResult.data);
+      setNotifications(notifs);
     } else {
-      const apps = await getApplicationsForPromoterSlots(supabase, user.id);
+      const [apps, bookingsResult, notifs] = await Promise.all([
+        getApplicationsForPromoterSlots(supabase, user.id),
+        getPromoterBookings(supabase, user.id),
+        getNotifications(supabase, user.id),
+      ]);
       setApplications(
         apps.map((a) => {
           const { artist, ...app } = a;
@@ -305,17 +350,49 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return app;
         })
       );
+      if (bookingsResult.ok) setBookings(bookingsResult.data);
+      setNotifications(notifs);
     }
   }, [supabase, user, role]);
 
-  // Local-only state sync — no DB write. The "booked" transition is
-  // deliberately blocked from direct client writes (see
-  // 0008_real_payments.sql); the server already wrote it after verifying
-  // payment (src/app/api/stripe/payments/confirm/route.ts), so the client
-  // just needs to reflect that here.
-  const syncApplicationStatus: StoreShape["syncApplicationStatus"] = useCallback((id, status) => {
-    setApplications((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
-  }, []);
+  const apply: StoreShape["apply"] = useCallback(
+    async (input) => {
+      if (!user) return fail("not_authenticated");
+      const result = await applyToSlot(supabase, {
+        slotId: input.slotId,
+        artistId: user.id,
+        featuredTrackId: input.featuredTrackId,
+        message: input.message,
+      });
+      // Only refresh on success; on failure the caller shows the error and
+      // nothing local pretends the application exists.
+      if (result.ok) await refreshApplications();
+      return result;
+    },
+    [supabase, user, refreshApplications]
+  );
+
+  const toggleSavedSlot: StoreShape["toggleSavedSlot"] = useCallback(
+    async (slotId) => {
+      if (!user) return fail("not_authenticated");
+      const wasSaved = savedSlotIds.includes(slotId);
+      const result = wasSaved ? await unsaveSlot(supabase, user.id, slotId) : await saveSlot(supabase, user.id, slotId);
+      if (!result.ok) return result;
+      setSavedSlotIds((prev) => (wasSaved ? prev.filter((id) => id !== slotId) : [...prev, slotId]));
+      return ok(!wasSaved);
+    },
+    [supabase, user, savedSlotIds]
+  );
+
+  const setEmailNotificationsPref: StoreShape["setEmailNotificationsPref"] = useCallback(
+    async (enabled) => {
+      if (!user) return fail("not_authenticated");
+      const result = await setEmailNotifications(supabase, user.id, enabled);
+      if (result.ok) setEmailNotificationsState(enabled);
+      return result;
+    },
+    [supabase, user]
+  );
 
   const markNotificationRead: StoreShape["markNotificationRead"] = useCallback(
     async (id) => {
@@ -331,31 +408,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await supabase.from("notifications").update({ read: true }).eq("profile_id", user.id).eq("read", false);
   }, [supabase, user]);
 
+  const refreshThreads: StoreShape["refreshThreads"] = useCallback(async () => {
+    if (!user) return;
+    setMessageThreads(await getMessageThreads(supabase, { role, id: user.id }));
+  }, [supabase, user, role]);
+
+  // Returns the outcome: the screen keeps the draft and offers Retry on
+  // failure, instead of clearing the box as if the message had gone.
   const sendMessage: StoreShape["sendMessage"] = useCallback(
     async (threadId, text) => {
-      if (!user) return;
-      const { error } = await supabase.from("messages").insert({
-        thread_id: threadId,
-        sender_id: user.id,
-        text,
-      });
-      if (error) return;
-      const readColumn = role === "artist" ? "artist_last_read_at" : "promoter_last_read_at";
-      await supabase
-        .from("message_threads")
-        .update({ [readColumn]: new Date().toISOString() })
-        .eq("id", threadId);
-      const threads = await getMessageThreads(supabase, { role, id: user.id });
-      setMessageThreads(threads);
+      if (!user) return fail("not_authenticated");
+      const result = await sendMessageRow(supabase, { threadId, senderId: user.id, text });
+      if (!result.ok) return result;
+      await markThreadReadAction(supabase, threadId);
+      await refreshThreads();
+      return ok();
     },
-    [supabase, user, role]
+    [supabase, user, refreshThreads]
+  );
+
+  const markThreadRead: StoreShape["markThreadRead"] = useCallback(
+    async (threadId) => {
+      await markThreadReadAction(supabase, threadId);
+      setMessageThreads((prev) => prev.map((t) => (t.id === threadId ? { ...t, unread: false } : t)));
+      setNotifications((prev) => prev.map((n) => (n.type === "message" && n.href === `/messages?thread=${threadId}` ? { ...n, read: true } : n)));
+    },
+    [supabase]
   );
 
   const setLastMinuteAlertsEnabled: StoreShape["setLastMinuteAlertsEnabled"] = useCallback(
     async (v) => {
-      if (!user || !currentArtist) return;
+      if (!user || !currentArtist) return fail("not_authenticated");
+      const { error } = await supabase.from("artists").update({ last_minute_alerts: v }).eq("id", user.id);
+      if (error) return fail(error, "We couldn't save that setting. Please try again.");
       setCurrentArtist({ ...currentArtist, lastMinuteAlerts: v });
-      await supabase.from("artists").update({ last_minute_alerts: v }).eq("id", user.id);
+      return ok();
     },
     [supabase, user, currentArtist]
   );
@@ -468,33 +555,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           artist_size_fit: slot.artistSizeFit,
           description: slot.description,
         })
-        .select(
-          "id, promoter_id, venue_id, headliner, headliner_image_url, artist_photo_url, city, date, doors_time, set_time, performance_length_mins, genres, expected_attendance, support_fee, travel_contribution, booking_fee, requirements, application_deadline, applicant_count, is_urgent, status, artist_size_fit, description, rescheduled_at, posted_at"
-        )
+        .select(SLOT_WITH_VENUE_COLUMNS)
         .single();
-      if (error || !data) throw new Error(error?.message ?? "Couldn't post that slot.");
-      return toSlot(data);
+      if (error || !data) throw new Error(friendlyError(error, "Couldn't post that listing."));
+      return toSlot(data as unknown as SlotRow);
     },
     [supabase, user]
-  );
-
-  const rescheduleSlot: StoreShape["rescheduleSlot"] = useCallback(
-    async (slotId, updates) => {
-      const { data, error } = await supabase
-        .from("slots")
-        .update({
-          date: updates.date,
-          doors_time: updates.doorsTime,
-          set_time: updates.setTime,
-          rescheduled_at: new Date().toISOString(),
-        })
-        .eq("id", slotId)
-        .select("id")
-        .maybeSingle();
-      if (error) throw new Error(error.message);
-      if (!data) throw new Error("Couldn't reschedule that show — you may not have permission.");
-    },
-    [supabase]
   );
 
   const markEmailVerified: StoreShape["markEmailVerified"] = useCallback((email) => {
@@ -524,7 +590,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (usernameError.code === "23505") {
           throw new Error("That username was just taken — try another.");
         }
-        throw new Error(usernameError.message);
+        throw new Error(friendlyError(usernameError, "We couldn't save that username."));
       }
 
       if (details.role === "artist") {
@@ -551,7 +617,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           bio: details.bio,
           image_url: currentArtist?.image || null,
         });
-        if (error) throw new Error(error.message);
+        if (error) throw new Error(friendlyError(error, "We couldn't create your artist profile."));
       } else {
         const { error } = await supabase.from("promoters").insert({
           id: user.id,
@@ -560,15 +626,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           location: details.city,
           avatar_url: currentPromoter?.avatar || null,
         });
-        if (error) throw new Error(error.message);
+        if (error) throw new Error(friendlyError(error, "We couldn't create your promoter profile."));
       }
 
-      await supabase.from("profiles").update({ has_onboarded: true }).eq("id", user.id);
+      const { error: finishError } = await supabase.from("profiles").update({ has_onboarded: true }).eq("id", user.id);
+      if (finishError) throw new Error(friendlyError(finishError, "We couldn't finish setting up your account."));
       setHasOnboarded(true);
       await loadForUser(user);
     },
     [supabase, user, currentArtist, currentPromoter, loadForUser]
   );
+
+  // Keep unread counts, application states and bookings current without a
+  // manual refresh: re-read when the tab regains focus and every 45 seconds
+  // while it's visible. (A message sent by someone else, or an offer, shows
+  // up here.) Skips while hidden so background tabs don't hammer the API.
+  useEffect(() => {
+    if (!user || !hasOnboarded) return;
+    const tick = () => {
+      if (document.visibilityState === "visible") {
+        refreshApplications().catch(() => undefined);
+        refreshThreads().catch(() => undefined);
+      }
+    };
+    const id = window.setInterval(tick, 45_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [user, hasOnboarded, refreshApplications, refreshThreads]);
 
   const unreadNotificationCount = notifications.filter((n) => !n.read).length;
   const unreadMessageCount = messageThreads.filter((t) => t.unread).length;
@@ -580,22 +667,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       currentPromoterId,
       currentArtist,
       currentPromoter,
+      signedIn: !!user,
+      userId: user?.id ?? null,
+      loadError,
+      reload,
+      suspended,
+      adminRole,
       applications,
-      addApplication,
-      updateApplicationStatus,
-      syncApplicationStatus,
+      bookings,
+      apply,
       refreshApplications,
+      savedSlotIds,
+      toggleSavedSlot,
+      emailNotifications,
+      setEmailNotificationsPref,
       notifications,
       unreadNotificationCount,
       markNotificationRead,
       markAllNotificationsRead,
       messageThreads,
       sendMessage,
+      markThreadRead,
+      refreshThreads,
       unreadMessageCount,
       lastMinuteAlertsEnabled: currentArtist?.lastMinuteAlerts ?? false,
       setLastMinuteAlertsEnabled,
       isSupportPlus,
       supportPlusBillingPeriod,
+      supportPlusStatus,
+      supportPlusPeriodEnd,
+      supportPlusCancelAtPeriodEnd,
       startSupportPlusCheckout,
       openBillingPortal,
       artistAvatar: currentArtist?.image || null,
@@ -606,7 +707,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       artistMonthlyListeners: currentArtist?.monthlyListeners ?? null,
       setArtistMonthlyListeners,
       addSlot,
-      rescheduleSlot,
       accountEmail,
       emailVerified,
       markEmailVerified,
@@ -620,21 +720,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       currentPromoterId,
       currentArtist,
       currentPromoter,
+      user,
+      loadError,
+      reload,
+      suspended,
+      adminRole,
       applications,
-      addApplication,
-      updateApplicationStatus,
-      syncApplicationStatus,
+      bookings,
+      apply,
       refreshApplications,
+      savedSlotIds,
+      toggleSavedSlot,
+      emailNotifications,
+      setEmailNotificationsPref,
       notifications,
       unreadNotificationCount,
       markNotificationRead,
       markAllNotificationsRead,
       messageThreads,
       sendMessage,
+      markThreadRead,
+      refreshThreads,
       unreadMessageCount,
       setLastMinuteAlertsEnabled,
       isSupportPlus,
       supportPlusBillingPeriod,
+      supportPlusStatus,
+      supportPlusPeriodEnd,
+      supportPlusCancelAtPeriodEnd,
       startSupportPlusCheckout,
       openBillingPortal,
       setArtistAvatar,
@@ -642,7 +755,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setArtistLinks,
       setArtistMonthlyListeners,
       addSlot,
-      rescheduleSlot,
       accountEmail,
       emailVerified,
       markEmailVerified,

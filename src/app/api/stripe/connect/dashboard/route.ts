@@ -1,30 +1,24 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { stripe } from "@/lib/stripe/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { json, limited, requireUser } from "@/lib/server/request";
 
-// Deep-links a verified artist straight into their own Stripe Express
-// dashboard — where their real payout schedule, bank details, and payout
-// history actually live. We don't mirror any of that in our own database;
-// Stripe already has it, this just hands them a one-time link to see it.
+// Deep-links an artist into their own Stripe Express dashboard, where their
+// real payout schedule, bank details and payout history live. Nothing about
+// payouts is mirrored in our database — Stripe is the source of truth.
 export async function POST() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+  const limit = await limited(`connect-dash:${user.id}`, 10, 60);
+  if (limit) return limit;
 
-  const { data: artist } = await supabase
-    .from("artists")
-    .select("stripe_account_id, stripe_transfers_active")
-    .eq("id", user.id)
+  const { data: account } = await createAdminClient()
+    .from("artist_payment_accounts")
+    .select("stripe_account_id, transfers_active")
+    .eq("artist_id", user.id)
     .maybeSingle();
+  if (!account?.stripe_account_id || !account.transfers_active) return json({ error: "Set up Stripe payouts first." }, 400);
 
-  if (!artist?.stripe_account_id || !artist.stripe_transfers_active) {
-    return NextResponse.json({ error: "Set up Stripe payouts first." }, { status: 400 });
-  }
-
-  const loginLink = await stripe.accounts.createLoginLink(artist.stripe_account_id);
-  return NextResponse.json({ url: loginLink.url });
+  const loginLink = await stripe.accounts.createLoginLink(account.stripe_account_id);
+  return json({ url: loginLink.url });
 }

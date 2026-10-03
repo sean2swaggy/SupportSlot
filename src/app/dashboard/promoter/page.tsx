@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
@@ -12,17 +12,17 @@ import StatCard from "@/components/ui/StatCard";
 import SectionHeading from "@/components/ui/SectionHeading";
 import Button from "@/components/ui/Button";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
-import MatchBadge from "@/components/ui/MatchBadge";
+import ListingActions from "@/components/bookings/ListingActions";
+import { PromoterApplicantControls } from "@/components/bookings/BookingControls";
 import AvatarUploadField from "@/components/ui/AvatarUploadField";
 import EmailVerifyBanner from "@/components/account/EmailVerifyBanner";
-import BookingActionsLinks from "@/components/bookings/BookingActionsLinks";
 import type { Artist, GigInvitationForPromoter, SupportSlot, Venue } from "@/lib/types";
 
 const ARTIST_COLUMNS =
   "id, handle, name, image_url, banner_image_url, location, genres, spotify_url, instagram_url, tiktok_url, soundcloud_url, bandcamp_url, youtube_url, website_url, monthly_listeners, bio, live_video_thumbnail_url, live_video_url, availability, travel_radius_miles, verification, artist_size, last_minute_alerts, member_since";
 
 export default function PromoterDashboard() {
-  const { currentPromoter, currentPromoterId, applications, promoterAvatar, setPromoterAvatar } =
+  const { currentPromoter, currentPromoterId, applications, bookings, promoterAvatar, setPromoterAvatar } =
     useStore();
 
   const [mySlots, setMySlots] = useState<SupportSlot[]>([]);
@@ -35,15 +35,27 @@ export default function PromoterDashboard() {
     [applications, mySlots]
   );
 
+  const [slotsError, setSlotsError] = useState<string | null>(null);
+  const reloadSlots = useCallback(async () => {
+    if (!currentPromoterId) return;
+    try {
+      setMySlots(await getSlotsForPromoter(createClient(), currentPromoterId));
+      setSlotsError(null);
+    } catch {
+      setSlotsError("We couldn't load your listings. Please refresh and try again.");
+    }
+  }, [currentPromoterId]);
+
   useEffect(() => {
     if (!currentPromoterId) return;
     const supabase = createClient();
-    getSlotsForPromoter(supabase, currentPromoterId).then(setMySlots);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void reloadSlots();
     getVenues(supabase).then((venues) =>
       setVenuesById(Object.fromEntries(venues.map((v) => [v.id, v])))
     );
     getInvitationsForPromoterSlots(supabase, currentPromoterId).then(setInvitations);
-  }, [currentPromoterId]);
+  }, [currentPromoterId, reloadSlots]);
 
   useEffect(() => {
     const ids = Array.from(new Set(applicationsForMySlots.map((a) => a.artistId)));
@@ -62,9 +74,15 @@ export default function PromoterDashboard() {
       });
   }, [applicationsForMySlots]);
 
+  const liveSlots = mySlots.filter((s) => s.status !== "cancelled");
   const openSlots = mySlots.filter((s) => s.status === "open");
   const shortlisted = applicationsForMySlots.filter((a) => a.status === "shortlisted");
-  const booked = applicationsForMySlots.filter((a) => a.status === "booked");
+  const booked = applicationsForMySlots.filter((a) => a.status === "confirmed");
+  const pendingApplicants = applicationsForMySlots.filter((a) => ["submitted", "viewed", "shortlisted", "offered"].includes(a.status));
+  // Things waiting on the promoter: pay for confirmed bookings.
+  const awaitingPayment = bookings.filter(
+    (b) => b.status === "confirmed" && (b.paymentStatus === "unpaid" || b.paymentStatus === "failed" || b.paymentStatus === "processing")
+  );
 
   if (!currentPromoter) return null;
   const promoter = currentPromoter;
@@ -118,11 +136,42 @@ export default function PromoterDashboard() {
       <EmailVerifyBanner />
 
       <div className="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Upcoming shows" value={mySlots.length} />
+        <StatCard label="Listings" value={liveSlots.length} />
         <StatCard label="Open support slots" value={openSlots.length} />
-        <StatCard label="Total applications" value={applicationsForMySlots.length} />
+        <StatCard label="Applications awaiting you" value={pendingApplicants.length} />
         <StatCard label="Confirmed support artists" value={booked.length} />
       </div>
+
+      {slotsError && (
+        <p className="mt-6 text-sm text-signal" role="alert">
+          {slotsError}
+        </p>
+      )}
+
+      {awaitingPayment.length > 0 && (
+        <div className="mt-10 border border-acid/60 bg-acid/5 p-5">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-acid">Needs your attention</p>
+          <p className="mt-1 text-sm text-paper-dim">
+            These artists have accepted. The booking is only complete once you&rsquo;ve paid.
+          </p>
+          <div className="mt-4 space-y-4">
+            {awaitingPayment.map((b) => {
+              const app = applications.find((a) => a.id === b.applicationId);
+              if (!app) return null;
+              return (
+                <div key={b.id} className="border-t border-acid/20 pt-4 first:border-0 first:pt-0">
+                  <p className="text-sm">
+                    {b.artistName} — {b.headliner}, {formatDate(b.eventDate)}
+                  </p>
+                  <div className="mt-2">
+                    <PromoterApplicantControls application={app} booking={b} slotOpen={false} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div id="applicants" className="mt-14 scroll-mt-24">
         <SectionHeading eyebrow="Manage" title="Upcoming shows" />
@@ -137,10 +186,13 @@ export default function PromoterDashboard() {
           ) : (
             mySlots.map((slot) => {
               const venue = venuesById[slot.venueId];
-              const slotApps = applications
-                .filter((a) => a.slotId === slot.id)
-                .sort((a, b) => b.matchPercent - a.matchPercent);
-              const bestMatches = slotApps.slice(0, 3);
+              const slotApps = applications.filter((a) => a.slotId === slot.id);
+              const counts = {
+                new: slotApps.filter((a) => a.status === "submitted").length,
+                viewed: slotApps.filter((a) => a.status === "viewed").length,
+                shortlisted: slotApps.filter((a) => a.status === "shortlisted").length,
+                offered: slotApps.filter((a) => a.status === "offered").length,
+              };
               const totalApplicants = Math.max(slot.applicantCount, slotApps.length);
 
               return (
@@ -169,30 +221,22 @@ export default function PromoterDashboard() {
                     </div>
                   </div>
 
-                  {bestMatches.length > 0 && (
-                    <div className="mt-5 border-t border-ink-border pt-4">
-                      <p className="font-mono text-[10px] uppercase tracking-widest text-paper-dim mb-3">
-                        Best matches
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {bestMatches.map((a) => {
-                          const artist = artistsById[a.artistId];
-                          if (!artist) return null;
-                          return (
-                            <Link
-                              key={a.id}
-                              href={`/artist/${artist.handle}`}
-                              className="flex items-center gap-2 border border-ink-border px-2.5 py-1.5 hover:border-paper transition-colors"
-                            >
-                              <img src={artist.image || DEFAULT_FALLBACK} alt="" className="h-6 w-6 object-cover" />
-                              <span className="text-xs">{artist.name}</span>
-                              <MatchBadge percent={a.matchPercent} size="sm" />
-                            </Link>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                  <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-ink-border pt-4">
+                    <span
+                      className={
+                        "font-mono text-[10px] uppercase tracking-widest border px-2 py-0.5 " +
+                        (slot.status === "open" ? "border-ok/60 text-ok" : slot.status === "cancelled" ? "border-signal/60 text-signal" : "border-ink-border text-paper-dim")
+                      }
+                    >
+                      {slot.status === "open" ? "Open" : slot.status === "filled" ? "Filled" : slot.status === "closed" ? "Closed" : "Cancelled"}
+                    </span>
+                    {totalApplicants > 0 && (
+                      <span className="text-xs text-paper-dim">
+                        {counts.new} new · {counts.viewed} viewed · {counts.shortlisted} shortlisted · {counts.offered} offered
+                      </span>
+                    )}
+                    <ListingActions slot={slot} onChanged={reloadSlots} />
+                  </div>
                 </div>
               );
             })
@@ -248,11 +292,8 @@ export default function PromoterDashboard() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 mt-3 pt-3 border-t border-ok/20">
-                    <p className="font-mono text-[10px] uppercase tracking-widest text-ok">
-                      Paid ✓
-                    </p>
-                    <BookingActionsLinks application={a} slot={slot} className="flex items-center gap-4" />
+                  <div className="mt-3 pt-3 border-t border-ok/20">
+                    <PromoterApplicantControls application={a} booking={bookings.find((x) => x.applicationId === a.id)} slotOpen={false} />
                   </div>
                 </div>
               );

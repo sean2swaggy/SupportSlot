@@ -5,7 +5,8 @@ import Link from "next/link";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import { useStore } from "@/lib/store";
-import { computeMatch } from "@/lib/match";
+import { explainFit } from "@/lib/fit";
+import FitSummary from "@/components/ui/FitSummary";
 import type { Artist, SupportSlot } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -20,25 +21,31 @@ export default function ApplyModal({
   slot: SupportSlot;
   artist: Artist;
 }) {
-  const { addApplication } = useStore();
+  const { apply } = useStore();
   const [trackId, setTrackId] = useState(artist.tracks[0]?.id ?? "");
-  const [videoSelected, setVideoSelected] = useState(true);
   const [message, setMessage] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fit = explainFit(artist, slot);
 
   const close = () => {
     onClose();
     setTimeout(() => setSubmitted(false), 300);
   };
 
-  const handleSubmit = () => {
-    addApplication({
+  const handleSubmit = async () => {
+    if (submitting) return; // repeat clicks while the request is in flight
+    setSubmitting(true);
+    setError(null);
+    const result = await apply({
       slotId: slot.id,
-      featuredTrackId: trackId,
+      featuredTrackId: trackId || undefined,
       message: message.trim() || undefined,
-      matchPercent: computeMatch(artist, slot),
     });
-    setSubmitted(true);
+    setSubmitting(false);
+    if (result.ok) setSubmitted(true);
+    else setError(result.error);
   };
 
   if (submitted) {
@@ -52,8 +59,8 @@ export default function ApplyModal({
           </div>
           <p className="font-display text-2xl mt-5">Application submitted</p>
           <p className="mt-2 text-sm text-paper-dim max-w-[38ch] mx-auto">
-            {slot.headliner} will review your application. We&rsquo;ll let you know the moment
-            your status changes — no need to follow up.
+            The promoter will review your application. You&rsquo;ll see its status on your applications page, and
+            get a notification when it changes.
           </p>
           <div className="mt-7 flex flex-col sm:flex-row gap-3 justify-center">
             <Button href="/applications" size="md">
@@ -90,7 +97,7 @@ export default function ApplyModal({
         </div>
 
         <p className="mt-4 text-xs text-paper-dim">
-          Pulled straight from your profile — nothing to re-type.
+          The promoter sees your profile, your chosen song and this message.
         </p>
 
         {artist.tracks.length > 0 && (
@@ -124,36 +131,12 @@ export default function ApplyModal({
         )}
 
         {artist.liveVideoThumbnail && (
-          <div className="mt-6">
-            <p className="font-mono text-[10px] uppercase tracking-widest text-paper-dim mb-3">
-              Choose live performance video
-            </p>
-            <label
-              className={cn(
-                "flex items-center gap-3 border p-3 cursor-pointer transition-colors",
-                videoSelected ? "border-acid bg-acid/5" : "border-ink-border hover:border-paper-dim"
-              )}
-            >
-              <input
-                type="checkbox"
-                className="accent-[var(--color-acid)]"
-                checked={videoSelected}
-                onChange={(e) => setVideoSelected(e.target.checked)}
-              />
-              <img
-                src={artist.liveVideoThumbnail}
-                alt=""
-                className="h-10 w-16 object-cover shrink-0"
-              />
-              <span className="flex-1 text-sm">Live performance clip</span>
-            </label>
-            {!videoSelected && (
-              <p className="mt-2 text-[11px] text-paper-dim">
-                We recommend including a live clip — applications with video get shortlisted more often.
-              </p>
-            )}
-          </div>
+          <p className="mt-6 text-xs text-paper-dim">
+            Your live performance clip is on your profile, which the promoter can open from your application.
+          </p>
         )}
+
+        <FitSummary fit={fit} className="mt-6" />
 
         <div className="mt-6">
           <p className="font-mono text-[10px] uppercase tracking-widest text-paper-dim mb-3">
@@ -172,8 +155,13 @@ export default function ApplyModal({
           </p>
         </div>
 
-        <Button onClick={handleSubmit} size="lg" className="w-full mt-2">
-          Submit application
+        {error && (
+          <p className="mt-2 text-sm text-signal" role="alert">
+            {error}
+          </p>
+        )}
+        <Button onClick={handleSubmit} size="lg" className="w-full mt-2" disabled={submitting}>
+          {submitting ? "Submitting…" : error ? "Try again" : "Submit application"}
         </Button>
         <p className="mt-3 text-center text-[11px] text-paper-dim">
           No application fees. Ever. <Link href="/trust" className="underline">Learn more</Link>

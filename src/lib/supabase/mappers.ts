@@ -4,6 +4,8 @@
 
 import type {
   Application,
+  Booking,
+  PaymentEvent,
   ApplicationStatus,
   Artist,
   AvailabilityRequest,
@@ -69,6 +71,7 @@ export interface ArtistTrackRow {
   title: string;
   duration: string;
   cover_image_url: string | null;
+  url?: string | null;
 }
 
 export interface ArtistShowRow {
@@ -123,6 +126,7 @@ function toTrack(row: ArtistTrackRow): Track {
     title: row.title,
     duration: row.duration,
     coverImage: row.cover_image_url ?? "",
+    url: row.url ?? undefined,
   };
 }
 
@@ -206,10 +210,12 @@ export interface SlotRow {
   description: string;
   rescheduled_at: string | null;
   posted_at: string;
+  venues?: VenueRow | null;
 }
 
 export function toSlot(row: SlotRow): SupportSlot {
   return {
+    venue: row.venues ? toVenue(row.venues) : undefined,
     id: row.id,
     headliner: row.headliner,
     headlinerImage: row.headliner_image_url ?? "",
@@ -245,8 +251,10 @@ export interface ApplicationRow {
   status: string;
   featured_track_id: string | null;
   message: string | null;
-  match_percent: number;
   submitted_at: string;
+  status_changed_at?: string;
+  viewed_at?: string | null;
+  closed_reason?: string | null;
 }
 
 export function toApplication(row: ApplicationRow): Application {
@@ -256,10 +264,104 @@ export function toApplication(row: ApplicationRow): Application {
     artistId: row.artist_id,
     status: row.status as ApplicationStatus,
     submittedAt: row.submitted_at,
+    statusChangedAt: row.status_changed_at ?? row.submitted_at,
+    viewedAt: row.viewed_at ?? undefined,
+    closedReason: row.closed_reason ?? undefined,
     featuredTrackId: row.featured_track_id ?? "",
     message: row.message ?? undefined,
-    matchPercent: row.match_percent,
   };
+}
+
+export interface BookingRow {
+  id: string;
+  application_id: string | null;
+  slot_id: string | null;
+  artist_id: string | null;
+  promoter_id: string | null;
+  status: string;
+  artist_name: string;
+  promoter_company: string;
+  headliner: string;
+  venue_name: string;
+  venue_address: string;
+  venue_city: string;
+  event_date: string;
+  doors_time: string;
+  set_time: string;
+  set_length_mins: number;
+  requirements: string[];
+  fee_pence: number;
+  travel_pence: number;
+  booking_fee_pence: number;
+  processing_fee_pence: number;
+  total_pence: number;
+  offer_message: string | null;
+  offered_at: string;
+  offer_expires_at: string;
+  confirmed_at: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  decline_reason: string | null;
+  refund_review_required: boolean;
+  payment_status: string;
+  receipt_url: string | null;
+  paid_at: string | null;
+  refunded_pence: number;
+  dispute_status: string | null;
+}
+
+export const BOOKING_COLUMNS =
+  "id, application_id, slot_id, artist_id, promoter_id, status, artist_name, promoter_company, headliner, venue_name, venue_address, venue_city, event_date, doors_time, set_time, set_length_mins, requirements, fee_pence, travel_pence, booking_fee_pence, processing_fee_pence, total_pence, offer_message, offered_at, offer_expires_at, confirmed_at, cancelled_at, cancel_reason, decline_reason, refund_review_required, payment_status, receipt_url, paid_at, refunded_pence, dispute_status";
+
+export function toBooking(row: BookingRow): Booking {
+  return {
+    id: row.id,
+    applicationId: row.application_id,
+    slotId: row.slot_id,
+    artistId: row.artist_id,
+    promoterId: row.promoter_id,
+    status: row.status as Booking["status"],
+    artistName: row.artist_name,
+    promoterCompany: row.promoter_company,
+    headliner: row.headliner,
+    venueName: row.venue_name,
+    venueAddress: row.venue_address,
+    venueCity: row.venue_city,
+    eventDate: row.event_date,
+    doorsTime: row.doors_time.slice(0, 5),
+    setTime: row.set_time.slice(0, 5),
+    setLengthMins: row.set_length_mins,
+    requirements: row.requirements,
+    feePence: row.fee_pence,
+    travelPence: row.travel_pence,
+    bookingFeePence: row.booking_fee_pence,
+    processingFeePence: row.processing_fee_pence,
+    totalPence: row.total_pence,
+    offerMessage: row.offer_message ?? undefined,
+    offeredAt: row.offered_at,
+    offerExpiresAt: row.offer_expires_at,
+    confirmedAt: row.confirmed_at ?? undefined,
+    cancelledAt: row.cancelled_at ?? undefined,
+    cancelReason: row.cancel_reason ?? undefined,
+    declineReason: row.decline_reason ?? undefined,
+    refundReviewRequired: row.refund_review_required,
+    paymentStatus: row.payment_status as Booking["paymentStatus"],
+    receiptUrl: row.receipt_url ?? undefined,
+    paidAt: row.paid_at ?? undefined,
+    refundedPence: row.refunded_pence,
+    disputeStatus: (row.dispute_status as Booking["disputeStatus"]) ?? undefined,
+  };
+}
+
+export interface PaymentEventRow {
+  id: string;
+  kind: string;
+  amount_pence: number | null;
+  occurred_at: string;
+}
+
+export function toPaymentEvent(row: PaymentEventRow): PaymentEvent {
+  return { id: row.id, kind: row.kind, amountPence: row.amount_pence, occurredAt: row.occurred_at };
 }
 
 export interface NotificationRow {
@@ -284,6 +386,7 @@ export function toNotification(row: NotificationRow): NotificationItem {
 
 export interface MessageThreadRow {
   id: string;
+  application_id?: string | null;
   context: string | null;
   artist_last_read_at: string | null;
   promoter_last_read_at: string | null;
@@ -322,6 +425,7 @@ export function toMessageThread(
 
   return {
     id: row.id,
+    applicationId: row.application_id ?? undefined,
     withName: opts.withName,
     withImage: opts.withImage,
     context: row.context ?? "",

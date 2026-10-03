@@ -6,44 +6,33 @@ export function formatGBP(amount: number) {
   return `£${amount.toLocaleString("en-GB")}`;
 }
 
+/** Integer pence -> "£1,234.50". */
+export function formatPence(pence: number) {
+  return `£${(pence / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export function formatNumber(n: number) {
   return n.toLocaleString("en-GB");
 }
 
-const MONTHS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
+import { applicationCloseText, daysUntilLondon, formatShowDate, showWeekday } from "./dates";
 
+// Show dates are UK calendar dates (YYYY-MM-DD), so these delegate to
+// dates.ts rather than parsing them as instants — see that file for why.
 export function formatDate(iso: string, opts?: { withYear?: boolean }) {
-  const d = new Date(iso);
-  const day = d.getDate();
-  const month = MONTHS[d.getMonth()];
-  if (opts?.withYear) return `${month} ${day}, ${d.getFullYear()}`;
-  return `${month} ${day}`;
+  return formatShowDate(iso, opts);
 }
 
 export function formatWeekday(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-GB", { weekday: "long" });
+  return showWeekday(iso);
 }
 
 export function daysUntil(iso: string) {
-  const now = new Date();
-  const target = new Date(iso);
-  const diff = Math.ceil(
-    (target.getTime() - new Date(now.toDateString()).getTime()) /
-      (1000 * 60 * 60 * 24)
-  );
-  return diff;
+  return daysUntilLondon(iso);
 }
 
 export function applicationCloseLabel(iso: string) {
-  const d = daysUntil(iso);
-  if (d < 0) return "Applications closed";
-  if (d === 0) return "Applications close today";
-  if (d === 1) return "Applications close tomorrow";
-  return `Applications close in ${d} days`;
+  return applicationCloseText(iso);
 }
 
 export function timeAgo(iso: string) {
@@ -55,10 +44,4 @@ export function timeAgo(iso: string) {
   if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
   const days = Math.floor(hours / 24);
   return `${days} day${days === 1 ? "" : "s"} ago`;
-}
-
-export function matchTier(pct: number): "high" | "mid" | "low" {
-  if (pct >= 85) return "high";
-  if (pct >= 65) return "mid";
-  return "low";
 }

@@ -1,44 +1,35 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { stripe } from "@/lib/stripe/server";
+import { fetchTransfersActive } from "@/lib/stripe/connect";
+import { siteOrigin } from "@/lib/server/origin";
 
-// Stripe sends the artist here after they finish (or partially finish) the
-// hosted onboarding flow. Requirements can still be outstanding at this
-// point — this just syncs current capability status; account.updated
-// webhooks (once wired up) keep it in sync going forward too.
+// Stripe sends the artist back here after the hosted onboarding flow (finished
+// or not). We ask Stripe for the account's real capability status and cache
+// it. Requirements may still be outstanding — the dashboard shows the true
+// state either way, and every payment re-checks with Stripe anyway.
 export async function GET(request: Request) {
-  const origin = new URL(request.url).origin;
+  const origin = siteOrigin(request);
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
+  let outcome = "unknown";
   if (user) {
-    const { data: artist } = await supabase
-      .from("artists")
-      .select("stripe_account_id")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (artist?.stripe_account_id) {
-      const account = await stripe.v2.core.accounts.retrieve(artist.stripe_account_id, {
-        include: ["configuration.recipient"],
-      });
-      const active =
-        account.configuration?.recipient?.capabilities?.stripe_balance?.stripe_transfers
-          ?.status === "active";
-      // stripe_transfers_active is locked to service-role-only writes (see
-      // 0018_lock_down_trust_and_payment_fields.sql) — this route re-checks
-      // capability status directly against Stripe first, so the admin
-      // client here is writing a value this route just verified, not a
-      // client-supplied one.
-      await createAdminClient()
-        .from("artists")
-        .update({ stripe_transfers_active: active })
-        .eq("id", user.id);
+    const admin = createAdminClient();
+    const { data: account } = await admin.from("artist_payment_accounts").select("stripe_account_id").eq("artist_id", user.id).maybeSingle();
+    if (account?.stripe_account_id) {
+      try {
+        const active = await fetchTransfersActive(account.stripe_account_id);
+        await admin.from("artist_payment_accounts").update({ transfers_active: active, checked_at: new Date().toISOString() }).eq("artist_id", user.id);
+        await admin.from("artists").update({ stripe_transfers_active: active }).eq("id", user.id);
+        outcome = active ? "ready" : "pending";
+      } catch (err) {
+        console.error("connect return: couldn't read account status", err);
+        outcome = "error";
+      }
     }
   }
-
-  return NextResponse.redirect(`${origin}/dashboard/artist`);
+  return NextResponse.redirect(`${origin}/dashboard/artist?payouts=${outcome}`);
 }

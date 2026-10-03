@@ -6,13 +6,14 @@ import { useStore } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
 import {
   blockPromoter,
-  createReport,
   getAvailabilityRequestsForArtist,
   respondToAvailabilityRequest,
   startAvailabilityRequestQuestion,
 } from "@/lib/queries";
 import { DEFAULT_FALLBACK } from "@/components/ui/AvatarUploadField";
 import { isRequestExpired } from "@/lib/availability";
+import ReportModal from "@/components/trust/ReportModal";
+import { friendlyError } from "@/lib/errors";
 import type { AvailabilityRequestForArtist } from "@/lib/types";
 
 export default function ArtistRequestsPage() {
@@ -21,6 +22,8 @@ export default function ArtistRequestsPage() {
   const [requests, setRequests] = useState<AvailabilityRequestForArtist[] | null>(null);
   const [notifyEnabled, setNotifyEnabled] = useState(true);
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
+  const [reportTarget, setReportTarget] = useState<AvailabilityRequestForArtist | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = () => {
     if (!currentArtistId) return;
@@ -42,7 +45,9 @@ export default function ArtistRequestsPage() {
   };
 
   const respond = async (recipientId: string, response: "available" | "unavailable") => {
-    await respondToAvailabilityRequest(createClient(), recipientId, response);
+    setActionError(null);
+    const saved = await respondToAvailabilityRequest(createClient(), recipientId, response);
+    if (!saved) setActionError(friendlyError(null, "We couldn't send your reply. Please try again."));
     load();
   };
 
@@ -60,20 +65,6 @@ export default function ArtistRequestsPage() {
     await blockPromoter(createClient(), currentArtistId, promoterId);
     setMenuOpenFor(null);
     load();
-  };
-
-  const report = async (req: AvailabilityRequestForArtist) => {
-    const reason = window.prompt("What's happening? A short description helps us review it.");
-    if (!reason) return;
-    await createReport(createClient(), {
-      reporterId: currentArtistId,
-      reportedProfileId: req.promoterId,
-      contextType: "availability_request",
-      contextId: req.id,
-      reason,
-    });
-    setMenuOpenFor(null);
-    window.alert("Thanks — we've logged this for review.");
   };
 
   return (
@@ -144,7 +135,10 @@ export default function ArtistRequestsPage() {
                       <div className="absolute right-0 z-10 mt-1 w-48 border border-ink-border bg-ink-card text-sm shadow-xl">
                         <button
                           type="button"
-                          onClick={() => report(req)}
+                          onClick={() => {
+                            setMenuOpenFor(null);
+                            setReportTarget(req);
+                          }}
                           className="block w-full px-3.5 py-2.5 text-left hover:bg-ink-raised"
                         >
                           Report
@@ -224,6 +218,19 @@ export default function ArtistRequestsPage() {
           })
         )}
       </div>
+      {actionError && (
+        <p className="mt-4 text-sm text-signal" role="alert">
+          {actionError}
+        </p>
+      )}
+      <ReportModal
+        open={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        contextType="availability_request"
+        contextId={reportTarget?.id}
+        reportedProfileId={reportTarget?.promoterId}
+        subject="this request"
+      />
     </div>
   );
 }

@@ -1,43 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { decideAccess, type AccessContext } from "@/lib/routes";
 
-const ONBOARDING_PATH = "/onboarding";
-const LOGIN_PATH = "/login";
-const FORGOT_PASSWORD_PATH = "/forgot-password";
-const MFA_SETUP_PATH = "/mfa-setup";
-const MFA_CHALLENGE_PATH = "/mfa-challenge";
-// Legal/policy pages must be readable without an account — you can't
-// meaningfully "agree to our Terms" via a link that only works once you're
-// already signed in. Everything else still requires sign-up, per the
-// app's mandatory-signup design (see AppGate.tsx).
-const PUBLIC_PATHS = ["/privacy", "/terms", "/trust"];
-
-// Artist and promoter are deliberately two different apps sharing one
-// codebase — each role has its own landing page and routes the other role
-// has no reason to be on (a promoter posting/managing gigs, an artist
-// browsing/applying to them). This must hold no matter how the route is
-// reached — nav only links to the right places, but a bookmark, typed URL,
-// or stale link has to be stopped here, server-side, not just hidden from
-// the menu.
-const PROMOTER_ONLY_PREFIXES = ["/create-slot", "/dashboard/promoter", "/promoter", "/support-plus"];
-const ARTIST_ONLY_PREFIXES = ["/dashboard/artist", "/applications", "/requests", "/last-minute"];
-
-function isUnderPrefix(pathname: string, prefixes: string[]) {
-  return prefixes.some((p) => pathname === p || pathname.startsWith(p + "/"));
-}
-
-// Each role's actual home — the page nav's logo/landing takes them to.
-// "/" is the artist-facing slot-discovery homepage; promoters land on
-// Discover Artists instead (their main landing page per the discovery
-// redesign), never on the artist marketing copy or a "Post a Slot" button.
-function landingPathFor(role: "artist" | "promoter") {
-  return role === "artist" ? "/" : "/discover";
-}
-
-// Real server-side route protection — the app has no anonymous browsing
-// mode at all (sign-up is mandatory for every route, see AppGate.tsx), so
-// every request either belongs on /login, on /onboarding, or requires a
-// fully onboarded session.
+// Real server-side route protection. This file only GATHERS the facts about
+// the request (who's signed in, their role, whether they've finished
+// onboarding and 2FA, whether they're suspended) and applies the verdict;
+// the actual rules live in decideAccess() in src/lib/routes.ts, where every
+// branch is unit-tested. The UI hides things as a courtesy — this is the
+// enforcement: a bookmark, typed URL or stale link is stopped here.
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -52,9 +22,7 @@ export async function updateSession(request: NextRequest) {
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
         },
       },
     }
@@ -64,82 +32,48 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const pathname = request.nextUrl.pathname;
-  const onLoginRoute = pathname === LOGIN_PATH;
-  const onForgotPasswordRoute = pathname === FORGOT_PASSWORD_PATH;
-  const onOnboardingRoute = pathname.startsWith(ONBOARDING_PATH);
-  const onPublicRoute = PUBLIC_PATHS.includes(pathname);
+  const ctx: AccessContext = {
+    pathname: request.nextUrl.pathname,
+    search: request.nextUrl.search,
+    signedIn: !!user,
+    profile: null,
+    mfa: "ok",
+  };
 
-  if (onPublicRoute) return response;
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, has_onboarded, suspended_at, admin_role")
+      .eq("id", user.id)
+      .single();
+    // The profile row is created by a database trigger at signup; if it's
+    // somehow missing, treat the account as not-yet-onboarded.
+    ctx.profile = {
+      role: (profile?.role as "artist" | "promoter" | undefined) ?? "artist",
+      hasOnboarded: profile?.has_onboarded ?? false,
+      suspended: !!profile?.suspended_at,
+      adminRole: (profile?.admin_role as string | null | undefined) ?? null,
+    };
 
-  if (!user) {
-    if (onLoginRoute || onForgotPasswordRoute) return response;
-    const url = request.nextUrl.clone();
-    url.pathname = LOGIN_PATH;
-    return NextResponse.redirect(url);
+    // Mandatory 2FA: every onboarded account needs a verified TOTP factor and
+    // every session must have passed its challenge. Read off the session's
+    // own JWT (already refreshed by getUser above), so no extra round trip.
+    if (ctx.profile.hasOnboarded) {
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (!aal || aal.nextLevel !== "aal2") ctx.mfa = "needs_setup";
+      else if (aal.currentLevel !== aal.nextLevel) ctx.mfa = "needs_challenge";
+    }
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, has_onboarded")
-    .eq("id", user.id)
-    .single();
+  const redirectTo = decideAccess(ctx);
+  if (!redirectTo) return response;
 
-  // Profile row is created by a DB trigger at signup; if it's somehow
-  // missing, treat as not-onboarded rather than failing the request.
-  const role = (profile?.role as "artist" | "promoter" | undefined) ?? "artist";
-  const hasOnboarded = profile?.has_onboarded ?? false;
-
-  if (!hasOnboarded) {
-    if (onOnboardingRoute) return response;
-    const url = request.nextUrl.clone();
-    url.pathname = ONBOARDING_PATH;
-    return NextResponse.redirect(url);
-  }
-
-  // Mandatory 2FA — every onboarded account must have a verified TOTP
-  // factor, and every session must have completed its challenge, before
-  // reaching anything else. getAuthenticatorAssuranceLevel() reads this off
-  // the current session's JWT (already refreshed by getUser() above) plus
-  // its embedded factor list, so this is a local check, not an extra
-  // round trip. nextLevel === "aal2" means a verified factor exists at all;
-  // currentLevel === nextLevel means *this session* has cleared the
-  // challenge for it.
-  const onMfaSetupRoute = pathname === MFA_SETUP_PATH;
-  const onMfaChallengeRoute = pathname === MFA_CHALLENGE_PATH;
-  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  const needsMfaSetup = aal ? aal.nextLevel !== "aal2" : true;
-  const needsMfaChallenge = !!aal && aal.nextLevel === "aal2" && aal.currentLevel !== aal.nextLevel;
-
-  if (needsMfaSetup) {
-    if (onMfaSetupRoute) return response;
-    const url = request.nextUrl.clone();
-    url.pathname = MFA_SETUP_PATH;
-    return NextResponse.redirect(url);
-  }
-
-  if (needsMfaChallenge) {
-    if (onMfaChallengeRoute) return response;
-    const url = request.nextUrl.clone();
-    url.pathname = MFA_CHALLENGE_PATH;
-    return NextResponse.redirect(url);
-  }
-
-  if (onLoginRoute || onForgotPasswordRoute || onOnboardingRoute || onMfaSetupRoute || onMfaChallengeRoute) {
-    const url = request.nextUrl.clone();
-    url.pathname = landingPathFor(role);
-    return NextResponse.redirect(url);
-  }
-
-  const wrongRoleRoute =
-    (isUnderPrefix(pathname, PROMOTER_ONLY_PREFIXES) && role !== "promoter") ||
-    (isUnderPrefix(pathname, ARTIST_ONLY_PREFIXES) && role !== "artist");
-
-  if (wrongRoleRoute || (pathname === "/" && role === "promoter")) {
-    const url = request.nextUrl.clone();
-    url.pathname = landingPathFor(role);
-    return NextResponse.redirect(url);
-  }
-
-  return response;
+  const url = request.nextUrl.clone();
+  const [path, query] = redirectTo.split("?");
+  url.pathname = path;
+  url.search = query ? `?${query}` : "";
+  const redirect = NextResponse.redirect(url);
+  // Carry any refreshed session cookies onto the redirect.
+  response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+  return redirect;
 }

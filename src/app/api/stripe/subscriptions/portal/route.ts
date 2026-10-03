@@ -1,34 +1,24 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { stripe } from "@/lib/stripe/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { json, limited, requireUser } from "@/lib/server/request";
+import { siteOrigin } from "@/lib/server/origin";
 
-// Real cancel/manage flow — Stripe's own hosted Billing Portal, not a fake
-// "cancel" button that just flips a local flag. Cancellations here reach us
-// through the subscription webhook, which is what actually turns
-// is_support_plus off (see /api/stripe/webhooks).
+// Stripe's hosted Billing Portal: update the card, see invoices, cancel. A
+// cancellation there reaches us through the subscription webhook, which is
+// what actually changes is_support_plus — nothing flips locally from here.
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+  const limit = await limited(`portal:${user.id}`, 10, 60);
+  if (limit) return limit;
 
-  const { data: promoter } = await supabase
-    .from("promoters")
-    .select("stripe_customer_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!promoter?.stripe_customer_id) {
-    return NextResponse.json({ error: "No billing account found yet." }, { status: 400 });
-  }
+  const { data: billing } = await createAdminClient().from("promoter_billing").select("stripe_customer_id").eq("promoter_id", user.id).maybeSingle();
+  if (!billing?.stripe_customer_id) return json({ error: "No billing account found yet." }, 400);
 
-  const origin = new URL(request.url).origin;
   const session = await stripe.billingPortal.sessions.create({
-    customer: promoter.stripe_customer_id,
-    return_url: `${origin}/support-plus`,
+    customer: billing.stripe_customer_id,
+    return_url: `${siteOrigin(request)}/support-plus`,
   });
-
-  return NextResponse.json({ url: session.url });
+  return json({ url: session.url });
 }

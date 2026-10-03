@@ -2,15 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
 import { toArtist, type ArtistRow } from "@/lib/supabase/mappers";
 import { formatDate, formatGBP } from "@/lib/utils";
 import ArtistCard from "@/components/artists/ArtistCard";
-import StatusPill from "@/components/applications/StatusPill";
-import Button from "@/components/ui/Button";
-import BookModal from "@/components/BookModal";
-import BookingActionsLinks from "@/components/bookings/BookingActionsLinks";
+import StatusPill, { OPEN_STATUSES } from "@/components/applications/StatusPill";
+import { PromoterApplicantControls } from "@/components/bookings/BookingControls";
+import RescheduleListing from "@/components/bookings/RescheduleListing";
+import { explainFit } from "@/lib/fit";
+import { markApplicationViewed } from "@/lib/actions";
 import SaveToRosterButton from "@/components/roster/SaveToRosterButton";
 import SectionHeading from "@/components/ui/SectionHeading";
 import type { Artist, SupportSlot, Venue, Application } from "@/lib/types";
@@ -25,8 +27,8 @@ export default function ApplicantManagementClient({
   slot: SupportSlot;
   venue: Venue;
 }) {
-  const { applications, updateApplicationStatus } = useStore();
-  const [bookTarget, setBookTarget] = useState<Application | null>(null);
+  const router = useRouter();
+  const { applications, bookings, refreshApplications } = useStore();
   const [artistsById, setArtistsById] = useState<Record<string, Artist>>({});
 
   const slotApplicationRows = useMemo(
@@ -57,12 +59,34 @@ export default function ApplicantManagementClient({
       slotApplicationRows
         .map((a) => ({ application: a, artist: artistsById[a.artistId] }))
         .filter((x): x is { application: Application; artist: Artist } => !!x.artist)
-        .sort((a, b) => b.application.matchPercent - a.application.matchPercent),
+        // Live applications first (oldest first, so nobody is overlooked),
+        // then the closed ones.
+        .sort((a, b) => {
+          const aOpen = OPEN_STATUSES.includes(a.application.status) || a.application.status === "confirmed" ? 0 : 1;
+          const bOpen = OPEN_STATUSES.includes(b.application.status) || b.application.status === "confirmed" ? 0 : 1;
+          if (aOpen !== bOpen) return aOpen - bOpen;
+          return new Date(a.application.submittedAt).getTime() - new Date(b.application.submittedAt).getTime();
+        }),
     [slotApplicationRows, artistsById]
   );
 
-  const bestMatches = slotApplications.slice(0, 3);
-  const alreadyBooked = slotApplications.some((x) => x.application.status === "booked");
+  const confirmed = slotApplications.find((x) => x.application.status === "confirmed");
+  const slotOpen = slot.status === "open";
+
+  // A promoter opening this page is what makes "viewed" true: mark every
+  // still-"submitted" application as viewed (idempotent on the server), then
+  // re-read. Only the slot's owner can do this — the function checks.
+  const unviewedIds = slotApplicationRows.filter((a) => a.status === "submitted").map((a) => a.id).join(",");
+  useEffect(() => {
+    if (!unviewedIds) return;
+    const supabase = createClient();
+    Promise.all(unviewedIds.split(",").map((id) => markApplicationViewed(supabase, id)))
+      .then(() => refreshApplications())
+      .catch(() => undefined);
+  }, [unviewedIds, refreshApplications]);
+
+  const bookingFor = (applicationId: string) =>
+    bookings.find((b) => b.applicationId === applicationId && (b.status === "offered" || b.status === "confirmed" || b.status === "cancelled"));
 
   return (
     <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-10 py-10 sm:py-14">
@@ -103,44 +127,27 @@ export default function ApplicantManagementClient({
         </div>
       </div>
 
-      {alreadyBooked && (
-        <div className="mt-8 border border-ok/50 bg-ok/10 px-4 py-3">
-          <p className="font-mono text-xs uppercase tracking-widest text-ok">
-            Support act booked for this show
-          </p>
-          {(() => {
-            const booked = slotApplications.find((x) => x.application.status === "booked");
-            if (!booked) return null;
-            return (
-              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-ok/20">
-                <p className="font-mono text-[10px] uppercase tracking-widest text-ok">Paid ✓</p>
-                <BookingActionsLinks application={booked.application} slot={slot} className="flex items-center gap-4" />
-              </div>
-            );
-          })()}
+      {slot.status !== "open" && (
+        <div className="mt-8 border border-ink-border px-4 py-3 text-sm text-paper-dim">
+          {slot.status === "filled" && "This slot is filled."}
+          {slot.status === "closed" && "This listing is closed to new applications."}
+          {slot.status === "cancelled" && "This listing was cancelled."}
         </div>
       )}
 
-      {bestMatches.length > 0 && (
-        <div className="mt-10">
-          <SectionHeading eyebrow="Skip the scroll" title="Best matches" />
-          <p className="mt-3 text-sm text-paper-dim max-w-[60ch]">
-            Instead of reading through {slot.applicantCount} applications, here are the strongest
-            fits based on genre, location, audience compatibility, artist size and availability.
+      {confirmed && (
+        <div className="mt-8 border border-ok/50 bg-ok/10 px-4 py-3">
+          <p className="font-mono text-xs uppercase tracking-widest text-ok">
+            {confirmed.artist.name} is confirmed for this show
           </p>
-          <div className="mt-6 space-y-4">
-            {bestMatches.map(({ application, artist }) => (
-              <ArtistCard key={application.id} artist={artist} matchPercent={application.matchPercent}>
-                <ActionButtons
-                  application={application}
-                  artistId={artist.id}
-                  disabled={alreadyBooked}
-                  onShortlist={() => updateApplicationStatus(application.id, "shortlisted")}
-                  onBook={() => setBookTarget(application)}
-                />
-              </ArtistCard>
-            ))}
+          <div className="mt-3 pt-3 border-t border-ok/20">
+            <RescheduleListing slot={slot} onChanged={() => router.refresh()} />
           </div>
+        </div>
+      )}
+      {!confirmed && slot.status === "open" && (
+        <div className="mt-8">
+          <RescheduleListing slot={slot} onChanged={() => router.refresh()} />
         </div>
       )}
 
@@ -151,71 +158,25 @@ export default function ApplicantManagementClient({
             <p className="text-sm text-paper-dim">No applications yet.</p>
           ) : (
             slotApplications.map(({ application, artist }) => (
-              <ArtistCard key={application.id} artist={artist} matchPercent={application.matchPercent}>
-                <ActionButtons
-                  application={application}
-                  artistId={artist.id}
-                  disabled={alreadyBooked}
-                  onShortlist={() => updateApplicationStatus(application.id, "shortlisted")}
-                  onBook={() => setBookTarget(application)}
-                />
+              <ArtistCard key={application.id} artist={artist} fit={explainFit(artist, slot)}>
+                <div className="w-full space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusPill status={application.status} />
+                    <SaveToRosterButton artistId={artist.id} size="sm" />
+                  </div>
+                  {application.message && <p className="text-sm border-l-2 border-ink-border pl-3">&ldquo;{application.message}&rdquo;</p>}
+                  <PromoterApplicantControls
+                    application={application}
+                    booking={bookingFor(application.id)}
+                    slotOpen={slotOpen}
+                  />
+                </div>
               </ArtistCard>
             ))
           )}
         </div>
       </div>
 
-      {bookTarget && artistsById[bookTarget.artistId] && (
-        <BookModal
-          open={!!bookTarget}
-          onClose={() => setBookTarget(null)}
-          artist={artistsById[bookTarget.artistId]}
-          slot={slot}
-          application={bookTarget}
-        />
-      )}
-    </div>
-  );
-}
-
-function ActionButtons({
-  application,
-  artistId,
-  disabled,
-  onShortlist,
-  onBook,
-}: {
-  application: Application;
-  artistId: string;
-  disabled: boolean;
-  onShortlist: () => void;
-  onBook: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <StatusPill status={application.status} />
-      <button
-        onClick={onShortlist}
-        disabled={disabled || application.status === "shortlisted" || application.status === "booked"}
-        className="font-mono text-[10px] uppercase tracking-widest border border-ink-border px-3 py-2 hover:border-paper transition-colors disabled:opacity-30"
-      >
-        Shortlist
-      </button>
-      <Link
-        href="/messages"
-        className="font-mono text-[10px] uppercase tracking-widest border border-ink-border px-3 py-2 hover:border-paper transition-colors"
-      >
-        Message
-      </Link>
-      <Button
-        size="sm"
-        variant="primary"
-        onClick={onBook}
-        disabled={disabled || application.status === "booked"}
-      >
-        {application.status === "booked" ? "Booked" : "Book"}
-      </Button>
-      <SaveToRosterButton artistId={artistId} size="sm" />
     </div>
   );
 }

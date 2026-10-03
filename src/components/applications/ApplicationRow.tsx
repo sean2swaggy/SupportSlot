@@ -5,24 +5,44 @@ import Link from "next/link";
 import type { Application, SupportSlot, Venue } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { getSlot, getVenue } from "@/lib/queries";
+import { useStore } from "@/lib/store";
 import { formatDate, formatGBP } from "@/lib/utils";
 import StatusPill from "./StatusPill";
-import MatchBadge from "@/components/ui/MatchBadge";
-import BookingActionsLinks from "@/components/bookings/BookingActionsLinks";
+import { ArtistApplicationControls } from "@/components/bookings/BookingControls";
 
 export default function ApplicationRow({ application }: { application: Application }) {
+  const { bookings } = useStore();
   const [slot, setSlot] = useState<SupportSlot | null>(null);
   const [venue, setVenue] = useState<Venue | null>(null);
+  const [missing, setMissing] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
     getSlot(supabase, application.slotId).then((s) => {
+      if (!s) {
+        setMissing(true);
+        return;
+      }
       setSlot(s);
-      if (s) getVenue(supabase, s.venueId).then(setVenue);
+      getVenue(supabase, s.venueId).then(setVenue);
     });
   }, [application.slotId]);
 
-  if (!slot) return null;
+  // The booking is the source of truth for the agreed date and terms once an
+  // offer exists; the listing can change after the fact.
+  const booking = bookings.find((b) => b.applicationId === application.id && (b.status === "offered" || b.status === "confirmed" || b.status === "cancelled"));
+
+  if (missing) {
+    return (
+      <div className="border border-ink-border bg-ink-raised p-4 flex items-center justify-between gap-3">
+        <p className="text-sm text-paper-dim">This listing is no longer available.</p>
+        <StatusPill status={application.status} />
+      </div>
+    );
+  }
+  if (!slot) return <div className="border border-ink-border bg-ink-raised h-24 animate-pulse" aria-hidden />;
+
+  const showControls = ["submitted", "viewed", "shortlisted", "offered", "confirmed"].includes(application.status) || (application.status === "cancelled" && booking) || application.status === "declined";
 
   return (
     <div className="border border-ink-border bg-ink-raised">
@@ -36,21 +56,19 @@ export default function ApplicationRow({ application }: { application: Applicati
         <div className="flex-1 min-w-0">
           <p className="font-display text-lg truncate">{slot.headliner}</p>
           <p className="text-xs text-paper-dim">
-            {venue?.name} · {slot.city} · {formatDate(slot.date, { withYear: true })}
+            {venue?.name} · {slot.city} · {formatDate(booking?.eventDate ?? slot.date, { withYear: true })}
             {slot.rescheduledAt && <span className="text-acid"> · rescheduled</span>}
+            {slot.status === "cancelled" && <span className="text-signal"> · listing cancelled</span>}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="font-mono text-xs text-paper-dim hidden sm:inline">
-            {formatGBP(slot.supportFee)}
-          </span>
-          <MatchBadge percent={application.matchPercent} size="sm" />
+          <span className="font-mono text-xs text-paper-dim hidden sm:inline">{formatGBP(slot.supportFee)}</span>
           <StatusPill status={application.status} />
         </div>
       </Link>
-      {application.status === "booked" && (
-        <div className="px-4 pb-4 pt-1 border-t border-ink-border">
-          <BookingActionsLinks application={application} slot={slot} className="flex items-center gap-4 pt-3" />
+      {showControls && (
+        <div className="px-4 pb-4 pt-3 border-t border-ink-border">
+          <ArtistApplicationControls application={application} booking={booking} />
         </div>
       )}
     </div>

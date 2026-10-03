@@ -8,6 +8,7 @@ import ApplicationRow from "@/components/applications/ApplicationRow";
 import Button from "@/components/ui/Button";
 import { DEFAULT_FALLBACK } from "@/components/ui/AvatarUploadField";
 import { cn, formatGBP } from "@/lib/utils";
+import { friendlyError } from "@/lib/errors";
 import type { ApplicationStatus, GigInvitationForArtist } from "@/lib/types";
 
 const TABS: { value: "all" | ApplicationStatus; label: string }[] = [
@@ -15,8 +16,10 @@ const TABS: { value: "all" | ApplicationStatus; label: string }[] = [
   { value: "submitted", label: "Submitted" },
   { value: "viewed", label: "Viewed" },
   { value: "shortlisted", label: "Shortlisted" },
-  { value: "booked", label: "Booked" },
-  { value: "not_selected", label: "Not selected" },
+  { value: "offered", label: "Offers" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "declined", label: "Not selected" },
+  { value: "withdrawn", label: "Withdrawn" },
   { value: "cancelled", label: "Cancelled" },
 ];
 
@@ -34,14 +37,20 @@ export default function ApplicationsPage() {
 
   const pendingInvitations = invitations.filter((i) => i.status === "pending");
 
+  const [invitationError, setInvitationError] = useState<string | null>(null);
   const respond = async (invitation: GigInvitationForArtist, response: "accepted" | "declined") => {
     if (!currentArtist) return;
-    await respondToGigInvitation(createClient(), {
+    setInvitationError(null);
+    const result = await respondToGigInvitation(createClient(), {
       invitationId: invitation.id,
       response,
       artist: currentArtist,
       slot: invitation.slot,
     });
+    if (!result.ok) {
+      setInvitationError(friendlyError(result.error, "We couldn't update that invitation. Please try again."));
+      return;
+    }
     loadInvitations();
     if (response === "accepted") await refreshApplications();
   };
@@ -54,7 +63,11 @@ export default function ApplicationsPage() {
     [applications, currentArtistId]
   );
 
-  const filtered = tab === "all" ? mine : mine.filter((a) => a.status === tab);
+  // "Offer declined" (artist said no) is grouped with Withdrawn: both are
+  // closed by the artist.
+  const matchesTab = (status: ApplicationStatus) =>
+    tab === "all" || status === tab || (tab === "withdrawn" && status === "offer_declined");
+  const filtered = mine.filter((a) => matchesTab(a.status));
 
   return (
     <div className="mx-auto max-w-[1000px] px-4 sm:px-6 lg:px-10 py-10 sm:py-14">
@@ -65,8 +78,8 @@ export default function ApplicationsPage() {
         Applications
       </h1>
       <p className="mt-4 max-w-[54ch] text-paper-dim">
-        Every slot you&rsquo;ve applied for, all in one place. A &ldquo;not selected&rdquo; here
-        just means the timing wasn&rsquo;t right — new matches turn up every week.
+        Every slot you&rsquo;ve applied for, all in one place. &ldquo;Not selected&rdquo; just means this
+        promoter went another way — it says nothing about your music.
       </p>
 
       {pendingInvitations.length > 0 && (
@@ -74,6 +87,11 @@ export default function ApplicationsPage() {
           <p className="font-mono text-[10px] uppercase tracking-widest text-acid mb-3">
             Gig invitations ({pendingInvitations.length})
           </p>
+          {invitationError && (
+            <p className="mb-3 text-sm text-signal" role="alert">
+              {invitationError}
+            </p>
+          )}
           <div className="space-y-3">
             {pendingInvitations.map((inv) => (
               <div key={inv.id} className="border border-acid/50 bg-acid/5 p-4">
@@ -110,7 +128,10 @@ export default function ApplicationsPage() {
 
       <div className="mt-8 flex flex-wrap gap-2">
         {TABS.map((t) => {
-          const count = t.value === "all" ? mine.length : mine.filter((a) => a.status === t.value).length;
+          const count =
+            t.value === "all"
+              ? mine.length
+              : mine.filter((a) => a.status === t.value || (t.value === "withdrawn" && a.status === "offer_declined")).length;
           return (
             <button
               key={t.value}

@@ -1,73 +1,58 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { toPence } from "@/lib/stripe/fees";
+import { getOrCreatePromoterCustomer } from "@/lib/stripe/customers";
 import { SUPPORT_PLUS_ANNUAL_PRICE, SUPPORT_PLUS_MONTHLY_PRICE } from "@/lib/pricing";
+import { json, limited, requireUser } from "@/lib/server/request";
+import { siteOrigin } from "@/lib/server/origin";
 
-// Support+ is a promoter-only subscription (see 0010_promoter_support_plus.sql).
-// Built with inline price_data rather than a pre-created Stripe Price, so
-// there's no live Product/Price object to manage or accidentally modify —
-// the existing £7.99/mo, £89.99/yr amounts in lib/pricing.ts stay the
-// single source of truth on both the marketing page and here.
+// Support+ is a promoter-only subscription (see 0010/0022 migrations). Prices
+// come from lib/pricing.ts — the single source of truth the pricing page also
+// reads — never from the request. Built with inline price_data so there's no
+// Stripe Price object to drift out of sync with those constants.
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
+  const { supabase, user } = auth;
+  const limit = await limited(`checkout:${user.id}`, 6, 60);
+  if (limit) return limit;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, is_support_plus")
-    .eq("id", user.id)
-    .maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("role, is_support_plus, support_plus_status").eq("id", user.id).maybeSingle();
   if (profile?.role !== "promoter") {
-    return NextResponse.json({ error: "Support+ is only available for promoter accounts." }, { status: 403 });
+    return json({ error: "Support+ is only available for promoter accounts." }, 403);
   }
-  // Without this, clicking "Subscribe" twice (double-click, or a second tab
-  // left open on /support-plus) starts a second, fully independent Stripe
-  // subscription on the same customer — a real duplicate charge, not just a
-  // duplicate row, since each subscription bills separately.
   if (profile.is_support_plus) {
-    return NextResponse.json({ error: "You already have an active Support+ subscription." }, { status: 409 });
+    return json(
+      {
+        error:
+          profile.support_plus_status === "past_due"
+            ? "Your last Support+ payment failed. Update your payment method in billing instead of starting a new subscription."
+            : "You already have an active Support+ subscription.",
+      },
+      409
+    );
   }
 
-  const { period } = await request.json();
-  if (period !== "monthly" && period !== "annual") {
-    return NextResponse.json({ error: "Invalid billing period." }, { status: 400 });
-  }
+  const { period } = await request.json().catch(() => ({ period: null }));
+  if (period !== "monthly" && period !== "annual") return json({ error: "Invalid billing period." }, 400);
 
-  const { data: promoter } = await supabase
-    .from("promoters")
-    .select("stripe_customer_id")
-    .eq("id", user.id)
-    .maybeSingle();
+  const customerId = await getOrCreatePromoterCustomer(user.id, user.email);
 
-  let customerId = promoter?.stripe_customer_id ?? null;
-  if (!customerId) {
-    const customer = await stripe.customers.create({ email: user.email });
-    customerId = customer.id;
-    // stripe_customer_id is locked to service-role-only writes (see
-    // 0018_lock_down_trust_and_payment_fields.sql) — see create-intent for
-    // why this must never be client-writable.
-    await createAdminClient().from("promoters").update({ stripe_customer_id: customerId }).eq("id", user.id);
+  // Stripe is the source of truth for "already subscribed" — our own flag can
+  // lag a webhook. A second concurrent subscription would bill twice.
+  const existing = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
+  if (existing.data.some((s) => ["active", "trialing", "past_due", "unpaid"].includes(s.status))) {
+    return json({ error: "You already have a Support+ subscription. Use 'Manage billing' to change it." }, 409);
   }
 
   const unitAmount = toPence(period === "annual" ? SUPPORT_PLUS_ANNUAL_PRICE : SUPPORT_PLUS_MONTHLY_PRICE);
-  const origin = new URL(request.url).origin;
+  const origin = siteOrigin(request);
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
-    // This account has Stripe's newer Managed Payments (merchant-of-record)
-    // product on by default, which requires a product tax_code on every
-    // inline price_data line item. Not relevant to this app's architecture
-    // (direct Stripe account, Connect destination charges elsewhere) — opt
-    // this session out rather than inventing a tax code for a subscription
-    // price that was built from price_data, not a real Product.
+    // This Stripe account has Managed Payments (merchant-of-record) on by
+    // default, which needs a product tax_code on inline price_data. Not how
+    // this app is set up (direct account + Connect), so opt this session out.
     managed_payments: { enabled: false },
     line_items: [
       {
@@ -86,5 +71,5 @@ export async function POST(request: Request) {
     cancel_url: `${origin}/support-plus`,
   });
 
-  return NextResponse.json({ url: session.url });
+  return json({ url: session.url });
 }

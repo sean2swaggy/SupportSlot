@@ -13,7 +13,13 @@ export default async function ApplicantsPage({
   const slot = await getSlot(supabase, id);
   const venue = slot ? await getVenue(supabase, slot.venueId) : undefined;
 
-  if (!slot || !venue) {
+  // Owner-only. A different signed-in user (or anyone else) gets the same
+  // "not found" as a listing that doesn't exist — the page doesn't confirm
+  // that the listing is there.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!slot || !venue || !user || slot.promoterId !== user.id) {
     notFound();
   }
 

@@ -4,14 +4,17 @@ import { useState } from "react";
 import Link from "next/link";
 import type { SupportSlot, Venue, Promoter } from "@/lib/types";
 import { formatDate, formatGBP, applicationCloseLabel, formatWeekday } from "@/lib/utils";
-import { computeMatch, matchFactors } from "@/lib/match";
+import { explainFit } from "@/lib/fit";
+import { deadlinePassed, londonToday } from "@/lib/dates";
 import { effectiveTravelContribution, isLongTravel, MIN_LONG_TRAVEL_FEE } from "@/lib/travel";
-import MatchBadge from "@/components/ui/MatchBadge";
+import FitSummary from "@/components/ui/FitSummary";
+import SaveGigButton from "@/components/slots/SaveGigButton";
+import ReportModal from "@/components/trust/ReportModal";
+import StatusPill from "@/components/applications/StatusPill";
 import Button from "@/components/ui/Button";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
 import UrgentPulse from "@/components/ui/UrgentPulse";
 import ApplyModal from "@/components/ApplyModal";
-import BookingActionsLinks from "@/components/bookings/BookingActionsLinks";
 import { useStore } from "@/lib/store";
 import { DEFAULT_FALLBACK } from "@/components/ui/AvatarUploadField";
 
@@ -24,15 +27,29 @@ export default function SlotDetailClient({
   venue: Venue;
   promoter: Promoter;
 }) {
-  const { currentArtist, currentPromoterId, applications, promoterAvatar } = useStore();
+  const { currentArtist, currentPromoterId, role, signedIn, applications, promoterAvatar } = useStore();
   const me = currentArtist;
   const [applyOpen, setApplyOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [today] = useState(() => londonToday());
   const promoterAvatarSrc =
     (promoter.id === currentPromoterId && promoterAvatar ? promoterAvatar : promoter.avatar) ||
     DEFAULT_FALLBACK;
   const viewingOwnSlot = promoter.id === currentPromoterId;
 
-  const match = me ? computeMatch(me, slot) : 0;
+  const fit = me ? explainFit(me, slot) : null;
+  const here = `/slot/${slot.id}`;
+  const open = slot.status === "open" && !deadlinePassed(slot.applicationDeadline) && slot.date >= today;
+  const closedReason =
+    slot.status === "filled"
+      ? "A support act has been confirmed for this slot."
+      : slot.status === "cancelled"
+        ? "This listing was cancelled by the promoter."
+        : slot.status === "closed"
+          ? "The promoter has closed this listing to new applications."
+          : slot.date < today
+            ? "This show has already happened."
+            : "The application deadline has passed.";
   const travelFee = me ? effectiveTravelContribution(slot.travelContribution, me.location, slot.city) : 0;
   const longTravel = me ? isLongTravel(me.location, slot.city) : false;
   const existingApplication = me
@@ -53,14 +70,22 @@ export default function SlotDetailClient({
           </Link>
           <div className="flex flex-wrap items-center gap-3 mb-3">
             {slot.isUrgent && <UrgentPulse label="Needed tonight" />}
-            {me && <MatchBadge percent={match} />}
           </div>
+          {!open && (
+            <p className="mb-3 inline-block border border-signal/60 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-signal">
+              Not accepting applications
+            </p>
+          )}
           <h1 className="font-display uppercase text-4xl sm:text-6xl leading-[0.95] tracking-tight">
             {slot.headliner}
           </h1>
           <p className="mt-3 text-paper-dim">
             {venue.name}, {slot.city} · {formatWeekday(slot.date)}, {formatDate(slot.date, { withYear: true })}
-            {slot.rescheduledAt && <span className="text-acid"> · rescheduled</span>}
+            {slot.rescheduledAt && (
+              <span className="text-acid">
+                {" "}· date or times changed {new Date(slot.rescheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+              </span>
+            )}
           </p>
         </div>
       </div>
@@ -135,15 +160,9 @@ export default function SlotDetailClient({
             </ul>
           </section>
 
-          {me && (
-            <section className="mt-10">
-              <h2 className="font-mono text-[11px] uppercase tracking-widest text-paper-dim mb-4">
-                Why this match?
-              </h2>
-              <p className="text-sm text-paper-dim max-w-[60ch]">
-                Your {match}% match is guidance, not a guarantee — based on {matchFactors().join(", ").toLowerCase()}.
-                Promoters see the same factors when reviewing your application.
-              </p>
+          {fit && (
+            <section className="mt-10 max-w-[60ch]">
+              <FitSummary fit={fit} />
             </section>
           )}
         </div>
@@ -151,7 +170,7 @@ export default function SlotDetailClient({
         <aside className="lg:sticky lg:top-24 h-fit space-y-6">
           <div className="border border-ink-border bg-ink-raised p-6">
             <div className="flex items-center gap-3">
-              <img src={venue.image} alt="" className="h-12 w-12 object-cover border border-ink-border" />
+              <img src={venue.image || DEFAULT_FALLBACK} alt="" className="h-12 w-12 object-cover border border-ink-border" />
               <div>
                 <p className="flex items-center gap-1.5 font-display text-lg leading-tight">
                   {venue.name}
@@ -178,40 +197,65 @@ export default function SlotDetailClient({
             </p>
 
             {viewingOwnSlot ? (
-              <Button href={`/promoter/slot/${slot.id}/applicants`} size="lg" className="w-full mt-4">
-                Manage applicants
-              </Button>
+              <div className="mt-4 space-y-3">
+                <Button href={`/promoter/slot/${slot.id}/applicants`} size="lg" className="w-full">
+                  Manage applicants
+                </Button>
+                {(slot.status === "open" || slot.status === "closed") && (
+                  <Button href={`/promoter/slot/${slot.id}/edit`} variant="outline" size="md" className="w-full">
+                    Edit listing
+                  </Button>
+                )}
+              </div>
             ) : me && existingApplication ? (
               <div className="mt-4">
-                <p className="font-display text-xl">
-                  Application {existingApplication.status.replace("_", " ")}
-                </p>
+                <div className="flex items-center gap-3">
+                  <p className="font-display text-xl">Your application</p>
+                  <StatusPill status={existingApplication.status} />
+                </div>
                 <Button href="/applications" variant="outline" size="md" className="w-full mt-4">
                   View application
                 </Button>
-                {existingApplication.status === "booked" && (
-                  <BookingActionsLinks
-                    application={existingApplication}
-                    slot={slot}
-                    className="flex items-center gap-4 mt-4 pt-4 border-t border-ink-border"
-                  />
-                )}
               </div>
+            ) : !open ? (
+              <p className="mt-4 text-sm text-paper-dim">{closedReason}</p>
             ) : me ? (
-              <Button
-                onClick={() => setApplyOpen(true)}
-                size="lg"
-                className="w-full mt-4"
-              >
+              <Button onClick={() => setApplyOpen(true)} size="lg" className="w-full mt-4">
                 Apply for support
               </Button>
-            ) : null}
+            ) : signedIn && role === "promoter" ? (
+              <p className="mt-4 text-sm text-paper-dim">Promoter accounts can&rsquo;t apply to listings. Switch to an artist account to apply.</p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                <p className="text-sm text-paper-dim">Create a free artist account (or log in) to apply for this slot.</p>
+                <Button href={`/login?mode=signup&next=${encodeURIComponent(here)}`} size="lg" className="w-full">
+                  Create an artist account
+                </Button>
+                <Button href={`/login?next=${encodeURIComponent(here)}`} variant="outline" size="md" className="w-full">
+                  Log in
+                </Button>
+              </div>
+            )}
+            {me && !viewingOwnSlot && (
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-ink-border pt-4">
+                <SaveGigButton slotId={slot.id} label />
+              </div>
+            )}
             <p className="mt-3 text-center text-[11px] text-paper-dim">No application fees.</p>
           </div>
+          {signedIn && !viewingOwnSlot && (
+            <button
+              type="button"
+              onClick={() => setReportOpen(true)}
+              className="font-mono text-[10px] uppercase tracking-widest text-paper-dim hover:text-signal hover:underline"
+            >
+              Report this listing
+            </button>
+          )}
         </aside>
       </div>
 
-      {me && !viewingOwnSlot && !existingApplication && (
+      {me && !viewingOwnSlot && !existingApplication && open && (
         <div className="fixed bottom-16 lg:hidden inset-x-0 z-20 border-t border-ink-border bg-ink/95 backdrop-blur p-3">
           <Button onClick={() => setApplyOpen(true)} size="lg" className="w-full">
             Apply for support
@@ -220,6 +264,14 @@ export default function SlotDetailClient({
       )}
 
       {me && <ApplyModal open={applyOpen} onClose={() => setApplyOpen(false)} slot={slot} artist={me} />}
+      <ReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        contextType="slot"
+        contextId={slot.id}
+        reportedProfileId={promoter.id}
+        subject="this listing"
+      />
     </div>
   );
 }

@@ -1,59 +1,51 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { json, limited, requireUser } from "@/lib/server/request";
+import { siteOrigin } from "@/lib/server/origin";
+import { NextResponse } from "next/server";
 
 // Creates (or reuses) the artist's Stripe Connect recipient account and
-// returns a one-time hosted onboarding link. Recipient configuration per
-// the Connect plan: dashboard=express, fees_collector=application,
-// losses_collector=application, destination charges — see
-// connect-recommend-plan discussion. Artists never get merchant/card_payments
-// capability; they only receive transfers, never take payments directly.
+// returns a one-time hosted onboarding link. Artists only ever RECEIVE
+// transfers (destination charges); they never take card payments themselves.
+// The account id lives in the private artist_payment_accounts table, written
+// only here, by the service role.
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
+  const { supabase, user } = auth;
+  const limit = await limited(`connect:${user.id}`, 10, 60);
+  if (limit) return limit;
 
-  const { data: artist } = await supabase
-    .from("artists")
-    .select("id, stripe_account_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!artist) {
-    return NextResponse.json({ error: "No artist profile found." }, { status: 404 });
-  }
+  const { data: artist } = await supabase.from("artists").select("id").eq("id", user.id).maybeSingle();
+  if (!artist) return json({ error: "Only artist accounts can set up payouts." }, 403);
 
-  let accountId = artist.stripe_account_id;
+  const admin = createAdminClient();
+  const { data: existing } = await admin.from("artist_payment_accounts").select("stripe_account_id").eq("artist_id", user.id).maybeSingle();
+  let accountId = existing?.stripe_account_id as string | undefined;
 
   if (!accountId) {
-    const account = await stripe.v2.core.accounts.create({
-      contact_email: user.email,
-      identity: { country: "GB" },
-      dashboard: "express",
-      defaults: {
-        responsibilities: { fees_collector: "application", losses_collector: "application" },
+    const account = await stripe.v2.core.accounts.create(
+      {
+        contact_email: user.email,
+        identity: { country: "GB" },
+        dashboard: "express",
+        defaults: { responsibilities: { fees_collector: "application", losses_collector: "application" } },
+        configuration: { recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } } },
+        include: ["configuration.recipient"],
       },
-      configuration: {
-        recipient: {
-          capabilities: { stripe_balance: { stripe_transfers: { requested: true } } },
-        },
-      },
-      include: ["configuration.recipient"],
-    });
+      { idempotencyKey: `connect-account:${user.id}` }
+    );
     accountId = account.id;
-    // stripe_account_id is locked to service-role-only writes (see
-    // 0018_lock_down_trust_and_payment_fields.sql) — this route has already
-    // verified who the caller is and created the account for them, so the
-    // admin client is the legitimate, narrow path around that lock, same as
-    // the "booked" status transition in payments/confirm.
-    await createAdminClient().from("artists").update({ stripe_account_id: accountId }).eq("id", user.id);
+    const { error } = await admin
+      .from("artist_payment_accounts")
+      .upsert({ artist_id: user.id, stripe_account_id: accountId }, { onConflict: "artist_id", ignoreDuplicates: true });
+    if (error) {
+      console.error("couldn't store connected account", error.message);
+      return json({ error: "We couldn't start payout setup. Please try again." }, 500);
+    }
   }
 
-  const origin = new URL(request.url).origin;
+  const origin = siteOrigin(request);
   const accountLink = await stripe.v2.core.accountLinks.create({
     account: accountId,
     use_case: {
@@ -65,20 +57,14 @@ export async function POST(request: Request) {
       },
     },
   });
-
-  return NextResponse.json({ url: accountLink.url });
+  return json({ url: accountLink.url });
 }
 
-// A GET here means Stripe's refresh_url sent the artist back because their
-// previous link expired or was already used — just re-run the same logic
-// and redirect straight to the new hosted link instead of making them click
-// "set up payouts" again.
+// Stripe's refresh_url lands here when a link expired or was already used:
+// mint a fresh one and send them straight on.
 export async function GET(request: Request) {
-  const result = await POST(request);
-  const body = await result.json();
-  if (body.url) {
-    return NextResponse.redirect(body.url);
-  }
-  const origin = new URL(request.url).origin;
-  return NextResponse.redirect(`${origin}/dashboard/artist`);
+  const res = (await POST(request)) as Response;
+  const body = await res.json().catch(() => ({}));
+  if (body.url) return NextResponse.redirect(body.url);
+  return NextResponse.redirect(`${siteOrigin(request)}/dashboard/artist?payouts=error`);
 }

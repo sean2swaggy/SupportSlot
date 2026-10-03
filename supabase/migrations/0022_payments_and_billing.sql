@@ -170,6 +170,14 @@ begin
     raise exception 'payment_unmatched: booking is %', v_b.status;
   end if;
 
+  -- The same payment can reach us twice under different ids (the webhook,
+  -- and a provider-verified sync when the customer returns to the site):
+  -- record it once.
+  if exists (select 1 from public.payment_events
+             where booking_id = p_booking_id and kind = 'payment_succeeded'
+               and details ->> 'payment_intent' = p_payment_intent_id) then
+    return;
+  end if;
   insert into public.payment_events (booking_id, stripe_event_id, kind, amount_pence, occurred_at, details)
     values (p_booking_id, p_event_id, 'payment_succeeded', p_amount_pence, p_occurred,
             jsonb_build_object('payment_intent', p_payment_intent_id, 'charge', p_charge_id))
@@ -444,3 +452,23 @@ begin
   end loop;
 end;
 $$;
+
+-- Email outbox worker support: claims a batch so two overlapping runs can't
+-- send the same email twice. A claim older than 5 minutes (a crashed run) is
+-- reclaimable; after 5 attempts a row stops being retried.
+create or replace function public.claim_email_outbox(p_limit integer default 20)
+returns setof public.email_outbox language sql security definer set search_path = public as $$
+  update public.email_outbox
+    set attempts = attempts + 1, claimed_at = now()
+  where id in (
+    select id from public.email_outbox
+    where status = 'pending' and attempts < 5
+      and (claimed_at is null or claimed_at < now() - interval '5 minutes')
+    order by created_at
+    limit least(greatest(p_limit, 1), 100)
+    for update skip locked
+  )
+  returning *
+$$;
+revoke all on function public.claim_email_outbox(integer) from public, anon, authenticated;
+grant execute on function public.claim_email_outbox(integer) to service_role;

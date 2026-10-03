@@ -7,20 +7,26 @@ import { createClient } from "@/lib/supabase/client";
 import { getVenue } from "@/lib/queries";
 import { formatDate, formatGBP, applicationCloseLabel } from "@/lib/utils";
 import { GenreTag } from "@/components/ui/Tag";
-import MatchBadge from "@/components/ui/MatchBadge";
+import FitSummary from "@/components/ui/FitSummary";
+import SaveGigButton from "./SaveGigButton";
+import type { Fit } from "@/lib/fit";
 
 export default function SlotCard({
   slot,
-  matchPercent,
+  fit,
 }: {
   slot: SupportSlot;
-  matchPercent?: number;
+  fit?: Fit;
 }) {
-  const [venue, setVenue] = useState<Venue | null>(null);
+  // Most queries join the venue; only fall back to a request when they didn't.
+  const [fetchedVenue, setFetchedVenue] = useState<Venue | null>(null);
   useEffect(() => {
-    getVenue(createClient(), slot.venueId).then(setVenue);
-  }, [slot.venueId]);
+    if (slot.venue) return;
+    getVenue(createClient(), slot.venueId).then(setFetchedVenue);
+  }, [slot.venue, slot.venueId]);
+  const venue = slot.venue ?? fetchedVenue;
   return (
+    <div className="relative">
     <Link
       href={`/slot/${slot.id}`}
       className="group block border border-ink-border bg-ink-raised transition-colors hover:border-paper"
@@ -37,9 +43,6 @@ export default function SlotCard({
           </p>
           <p className="font-display text-lg leading-tight">{slot.headliner}</p>
         </div>
-        {typeof matchPercent === "number" && (
-          <MatchBadge percent={matchPercent} className="absolute top-3 right-3" />
-        )}
         {slot.isUrgent && (
           <span className="absolute top-3 left-3 bg-signal px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-white">
             Tonight
@@ -79,7 +82,10 @@ export default function SlotCard({
         <p className="font-mono text-[10px] uppercase tracking-widest text-paper-dim">
           {applicationCloseLabel(slot.applicationDeadline)}
         </p>
+        {fit && <FitSummary fit={fit} compact />}
       </div>
     </Link>
+    <SaveGigButton slotId={slot.id} className="absolute top-3 right-3" />
+    </div>
   );
 }

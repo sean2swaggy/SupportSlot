@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
 import { getOpenSlots } from "@/lib/queries";
-import { computeMatch } from "@/lib/match";
+import { explainFit, fitRank } from "@/lib/fit";
 import StatCard from "@/components/ui/StatCard";
 import SectionHeading from "@/components/ui/SectionHeading";
 import SlotCard from "@/components/slots/SlotCard";
@@ -44,13 +44,12 @@ export default function ArtistDashboard() {
 
   const stats = useMemo(() => {
     const sent = myApplications.length;
-    const viewed = myApplications.filter((a) =>
-      ["viewed", "shortlisted", "booked"].includes(a.status)
-    ).length;
-    const shortlisted = myApplications.filter((a) =>
-      ["shortlisted", "booked"].includes(a.status)
-    ).length;
-    const booked = myApplications.filter((a) => a.status === "booked").length;
+    // "Viewed" counts applications a promoter genuinely opened (viewedAt is
+    // only ever set by the server when they did), including ones that later
+    // moved on.
+    const viewed = myApplications.filter((a) => !!a.viewedAt).length;
+    const shortlisted = myApplications.filter((a) => ["shortlisted", "offered", "confirmed"].includes(a.status)).length;
+    const booked = myApplications.filter((a) => a.status === "confirmed").length;
     return { sent, viewed, shortlisted, booked };
   }, [myApplications]);
 
@@ -59,8 +58,8 @@ export default function ArtistDashboard() {
     if (!me) return [];
     return openSlots
       .filter((s) => !appliedSlotIds.has(s.id))
-      .map((s) => ({ slot: s, match: computeMatch(me, s) }))
-      .sort((a, b) => b.match - a.match)
+      .map((s) => ({ slot: s, fit: explainFit(me, s) }))
+      .sort((a, b) => fitRank(b.fit) - fitRank(a.fit))
       .slice(0, 3);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me, openSlots, applications]);
@@ -107,15 +106,17 @@ export default function ArtistDashboard() {
       </div>
 
       <div className="mt-10 space-y-6">
-        <PayoutPanel />
+        <Suspense fallback={null}>
+          <PayoutPanel />
+        </Suspense>
         <ArtistMonthlyListenersEditor artist={me} />
         <ArtistLinksEditor artist={me} />
       </div>
 
       <div className="mt-14">
         <SectionHeading
-          eyebrow="Matched for you"
-          title="Recommended slots"
+          eyebrow="Based on your profile"
+          title="Slots that may suit you"
           action={
             <Link href="/discover" className="font-mono text-xs uppercase tracking-widest text-acid hover:underline">
               See all slots →
@@ -123,8 +124,11 @@ export default function ArtistDashboard() {
           }
         />
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-5">
-          {recommended.map(({ slot, match }) => (
-            <SlotCard key={slot.id} slot={slot} matchPercent={match} />
+          {recommended.length === 0 && (
+            <p className="text-sm text-paper-dim sm:col-span-3">No open slots to suggest right now — check back soon or browse everything.</p>
+          )}
+          {recommended.map(({ slot, fit }) => (
+            <SlotCard key={slot.id} slot={slot} fit={fit} />
           ))}
         </div>
       </div>

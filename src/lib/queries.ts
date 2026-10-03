@@ -60,7 +60,9 @@ import type {
   Venue,
 } from "@/lib/types";
 import { effectiveTravelContribution } from "@/lib/travel";
-import { computeMatch } from "@/lib/match";
+import { londonToday } from "@/lib/dates";
+import { toBooking, toPaymentEvent, BOOKING_COLUMNS, type BookingRow, type PaymentEventRow } from "@/lib/supabase/mappers";
+import type { Booking, PaymentEvent } from "@/lib/types";
 import { validateRecipients } from "@/lib/availability";
 
 const ARTIST_COLUMNS =
@@ -81,7 +83,7 @@ async function fetchArtistWithChildren(
   const [{ data: tracks }, { data: shows }] = await Promise.all([
     supabase
       .from("artist_tracks")
-      .select("id, title, duration, cover_image_url, sort_order")
+      .select("id, title, duration, cover_image_url, url, sort_order")
       .eq("artist_id", row.id)
       .order("sort_order", { ascending: true }),
     supabase
@@ -150,31 +152,108 @@ export async function getVenue(supabase: SupabaseClient, id: string): Promise<Ve
 const SLOT_COLUMNS =
   "id, promoter_id, venue_id, headliner, headliner_image_url, artist_photo_url, city, date, doors_time, set_time, performance_length_mins, genres, expected_attendance, support_fee, travel_contribution, booking_fee, requirements, application_deadline, applicant_count, is_urgent, status, artist_size_fit, description, rescheduled_at, posted_at";
 
+// Includes the venue so a list of cards doesn't need a request per card.
+export const SLOT_WITH_VENUE_COLUMNS = `${SLOT_COLUMNS}, venues(id, name, city, capacity, address, image_url, verification)`;
+
 export async function getSlot(supabase: SupabaseClient, id: string): Promise<SupportSlot | null> {
-  const { data, error } = await supabase.from("slots").select(SLOT_COLUMNS).eq("id", id).maybeSingle();
+  const { data, error } = await supabase.from("slots").select(SLOT_WITH_VENUE_COLUMNS).eq("id", id).maybeSingle();
   if (error || !data) return null;
-  return toSlot(data as SlotRow);
+  return toSlot(data as unknown as SlotRow);
 }
 
+// "Active" = open AND neither the application deadline nor the show date has
+// passed in UK time. Matches search_slots() in 0020_marketplace_core.sql.
 export async function getOpenSlots(supabase: SupabaseClient): Promise<SupportSlot[]> {
+  const today = londonToday();
   const { data, error } = await supabase
     .from("slots")
-    .select(SLOT_COLUMNS)
+    .select(SLOT_WITH_VENUE_COLUMNS)
     .eq("status", "open")
-    .order("posted_at", { ascending: false });
+    .gte("application_deadline", today)
+    .gte("date", today)
+    .order("date", { ascending: true });
   if (error || !data) return [];
-  return (data as SlotRow[]).map(toSlot);
+  return (data as unknown as SlotRow[]).map(toSlot);
 }
 
 export async function getUrgentSlots(supabase: SupabaseClient): Promise<SupportSlot[]> {
+  const today = londonToday();
   const { data, error } = await supabase
     .from("slots")
-    .select(SLOT_COLUMNS)
+    .select(SLOT_WITH_VENUE_COLUMNS)
     .eq("status", "open")
     .eq("is_urgent", true)
+    .gte("application_deadline", today)
+    .gte("date", today)
     .order("application_deadline", { ascending: true });
   if (error || !data) return [];
-  return (data as SlotRow[]).map(toSlot);
+  return (data as unknown as SlotRow[]).map(toSlot);
+}
+
+export interface SlotSearchParams {
+  q?: string;
+  city?: string;
+  genre?: string;
+  from?: string;
+  to?: string;
+  minFee?: number;
+  venueSize?: "intimate" | "mid" | "large";
+  artistSize?: "emerging" | "developing" | "established";
+  fromCity?: string;
+  maxMiles?: number;
+  urgentOnly?: boolean;
+  sort?: "date" | "fee" | "newest";
+  page?: number;
+  pageSize?: number;
+}
+
+export interface SlotSearchResult {
+  slots: SupportSlot[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// Public discovery: one server-side query (search_slots) does the searching,
+// filtering, sorting and paging, so it's correct for anonymous visitors and
+// doesn't download every listing. Errors are returned, not swallowed — the
+// page shows "couldn't load" with a retry instead of a misleading empty list.
+export async function searchSlots(
+  supabase: SupabaseClient,
+  params: SlotSearchParams
+): Promise<{ ok: true; data: SlotSearchResult } | { ok: false; error: string }> {
+  const pageSize = Math.min(Math.max(params.pageSize ?? 12, 1), 50);
+  const page = Math.max(params.page ?? 1, 1);
+  const { data: hits, error } = await supabase.rpc("search_slots", {
+    p_q: params.q?.trim() || null,
+    p_city: params.city || null,
+    p_genre: params.genre || null,
+    p_from: params.from || null,
+    p_to: params.to || null,
+    p_min_fee: params.minFee ?? null,
+    p_venue_size: params.venueSize ?? null,
+    p_artist_size: params.artistSize ?? null,
+    p_from_city: params.fromCity ?? null,
+    p_max_miles: params.maxMiles ?? null,
+    p_urgent_only: params.urgentOnly ?? false,
+    p_sort: params.sort ?? "date",
+    p_limit: pageSize,
+    p_offset: (page - 1) * pageSize,
+  });
+  if (error) return { ok: false, error: "We couldn't load listings just now. Please try again." };
+  const ids = (hits as Array<{ id: string; total_count: number | string }> | null) ?? [];
+  const total = ids.length ? Number(ids[0].total_count) : 0;
+  if (ids.length === 0) return { ok: true, data: { slots: [], total, page, pageSize } };
+
+  const { data: rows, error: rowsError } = await supabase
+    .from("slots")
+    .select(SLOT_WITH_VENUE_COLUMNS)
+    .in("id", ids.map((h) => h.id));
+  if (rowsError || !rows) return { ok: false, error: "We couldn't load listings just now. Please try again." };
+  const byId = new Map((rows as unknown as SlotRow[]).map((r) => [r.id, toSlot(r)]));
+  // The RPC decides the order; keep it.
+  const slots = ids.map((h) => byId.get(h.id)).filter((x): x is SupportSlot => !!x);
+  return { ok: true, data: { slots, total, page, pageSize } };
 }
 
 export async function getSlotsForPromoter(supabase: SupabaseClient, promoterId: string): Promise<SupportSlot[]> {
@@ -187,8 +266,8 @@ export async function getSlotsForPromoter(supabase: SupabaseClient, promoterId: 
   return (data as SlotRow[]).map(toSlot);
 }
 
-const APPLICATION_COLUMNS =
-  "id, slot_id, artist_id, status, featured_track_id, message, match_percent, submitted_at";
+export const APPLICATION_COLUMNS =
+  "id, slot_id, artist_id, status, featured_track_id, message, submitted_at, status_changed_at, viewed_at, closed_reason";
 
 export async function getApplicationsForSlot(supabase: SupabaseClient, slotId: string): Promise<Application[]> {
   const { data, error } = await supabase
@@ -241,42 +320,81 @@ export async function getNotifications(supabase: SupabaseClient, profileId: stri
     .from("notifications")
     .select("id, type, text, href, read, created_at")
     .eq("profile_id", profileId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(50);
   if (error || !data) return [];
   return data.map(toNotification);
 }
 
-// Total real Stripe earnings for a booked artist — the sum of what actually
-// transferred to their connected account (support fee + travel; the booking
-// fee is Support Slot's own cut, not the artist's). Stripe itself then pays
-// this out to their bank on its own schedule — see PayoutPanel.
-export async function getArtistEarnings(
+// An artist's bookings, with real payment state. "Received" only counts
+// bookings Stripe has confirmed as paid (and not wholly refunded); what the
+// artist receives is the agreed fee plus travel — Support Slot's booking fee
+// and the card-processing line are never taken from it. Stripe then pays the
+// artist out to their bank on its own schedule (see PayoutPanel).
+export async function getArtistBookings(
   supabase: SupabaseClient,
   artistId: string
-): Promise<{ total: number; bookings: Array<{ slot: SupportSlot; amount: number }> }> {
+): Promise<{ ok: true; data: Booking[] } | { ok: false; error: string }> {
   const { data, error } = await supabase
-    .from("applications")
-    .select(`slot_id, slots(${SLOT_COLUMNS})`)
+    .from("bookings")
+    .select(BOOKING_COLUMNS)
     .eq("artist_id", artistId)
-    .eq("status", "booked");
-  if (error || !data) return { total: 0, bookings: [] };
+    .order("event_date", { ascending: false });
+  if (error) return { ok: false, error: "We couldn't load your bookings. Please try again." };
+  return { ok: true, data: (data as unknown as BookingRow[]).map(toBooking) };
+}
 
-  const { data: artistRow } = await supabase.from("artists").select("location").eq("id", artistId).maybeSingle();
-  const artistLocation = (artistRow?.location as string) ?? "";
+export function summariseArtistEarnings(bookings: Booking[]): { receivedPence: number; awaitingPaymentPence: number } {
+  let received = 0;
+  let awaiting = 0;
+  for (const b of bookings) {
+    const artistShare = b.feePence + b.travelPence;
+    if (b.status === "confirmed") {
+      if (b.paymentStatus === "paid" || b.paymentStatus === "partially_refunded") {
+        received += artistShare;
+      } else if (b.paymentStatus === "unpaid" || b.paymentStatus === "processing" || b.paymentStatus === "failed") {
+        awaiting += artistShare;
+      }
+    }
+  }
+  return { receivedPence: received, awaitingPaymentPence: awaiting };
+}
 
-  const bookings = data
-    .filter((row) => row.slots)
-    .map((row) => {
-      const slot = toSlot(row.slots as unknown as SlotRow);
-      const travelFee = effectiveTravelContribution(slot.travelContribution, artistLocation, slot.city);
-      return { slot, amount: slot.supportFee + travelFee };
-    });
+export async function getPromoterBookings(
+  supabase: SupabaseClient,
+  promoterId: string
+): Promise<{ ok: true; data: Booking[] } | { ok: false; error: string }> {
+  const { data, error } = await supabase
+    .from("bookings")
+    .select(BOOKING_COLUMNS)
+    .eq("promoter_id", promoterId)
+    .order("event_date", { ascending: false });
+  if (error) return { ok: false, error: "We couldn't load your bookings. Please try again." };
+  return { ok: true, data: (data as unknown as BookingRow[]).map(toBooking) };
+}
 
-  return { total: bookings.reduce((sum, b) => sum + b.amount, 0), bookings };
+export async function getBookingsForSlot(supabase: SupabaseClient, slotId: string): Promise<Booking[]> {
+  const { data, error } = await supabase.from("bookings").select(BOOKING_COLUMNS).eq("slot_id", slotId);
+  if (error || !data) return [];
+  return (data as unknown as BookingRow[]).map(toBooking);
+}
+
+export async function getPaymentEvents(supabase: SupabaseClient, bookingId: string): Promise<PaymentEvent[]> {
+  const { data, error } = await supabase
+    .from("payment_events")
+    .select("id, kind, amount_pence, occurred_at")
+    .eq("booking_id", bookingId)
+    .order("occurred_at", { ascending: true });
+  if (error || !data) return [];
+  return (data as PaymentEventRow[]).map(toPaymentEvent);
 }
 
 // Message threads for one side of a conversation (artist or promoter),
-// each with its messages, mapped from that viewer's perspective.
+// mapped from that viewer's perspective. To keep this fast it loads the most
+// recent messages across the viewer's threads (not every message ever sent);
+// older history is fetched per conversation with loadEarlierMessages().
+export const MESSAGES_PER_PAGE = 30;
+
 export async function getMessageThreads(
   supabase: SupabaseClient,
   viewer: { role: "artist" | "promoter"; id: string }
@@ -285,11 +403,12 @@ export async function getMessageThreads(
   const { data: threadRows, error } = await supabase
     .from("message_threads")
     .select(
-      `id, context, artist_last_read_at, promoter_last_read_at,
+      `id, application_id, context, artist_last_read_at, promoter_last_read_at, last_message_at, created_at,
        artists(id, name, image_url), promoters(id, company, avatar_url)`
     )
     .eq(column, viewer.id)
-    .order("created_at", { ascending: false });
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(100);
   if (error || !threadRows) return [];
 
   const threadIds = threadRows.map((t) => t.id);
@@ -298,7 +417,8 @@ export async function getMessageThreads(
         .from("messages")
         .select("id, thread_id, sender_id, text, created_at")
         .in("thread_id", threadIds)
-        .order("created_at", { ascending: true })
+        .order("created_at", { ascending: false })
+        .limit(400)
     : { data: [] as MessageRow[] };
 
   return threadRows.map((t) => {
@@ -307,7 +427,7 @@ export async function getMessageThreads(
       .promoters;
     const withName = viewer.role === "artist" ? promoter?.company ?? "" : artist?.name ?? "";
     const withImage = viewer.role === "artist" ? promoter?.avatar_url ?? "" : artist?.image_url ?? "";
-    const messages = (messageRows as MessageRow[] | null)?.filter((m) => m.thread_id === t.id) ?? [];
+    const messages = ((messageRows as MessageRow[] | null)?.filter((m) => m.thread_id === t.id) ?? []).slice(0, MESSAGES_PER_PAGE);
 
     return toMessageThread(t as unknown as MessageThreadRow, messages, {
       viewerRole: viewer.role,
@@ -316,6 +436,26 @@ export async function getMessageThreads(
       withImage,
     });
   });
+}
+
+// One page of older messages for a conversation (oldest-first for display).
+export async function loadEarlierMessages(
+  supabase: SupabaseClient,
+  threadId: string,
+  before: string,
+  viewerId: string
+): Promise<Array<{ id: string; from: "me" | "them"; text: string; time: string }>> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("id, sender_id, text, created_at")
+    .eq("thread_id", threadId)
+    .lt("created_at", before)
+    .order("created_at", { ascending: false })
+    .limit(MESSAGES_PER_PAGE);
+  if (error || !data) return [];
+  return data
+    .map((m) => ({ id: m.id as string, from: (m.sender_id === viewerId ? "me" : "them") as "me" | "them", text: m.text as string, time: m.created_at as string }))
+    .reverse();
 }
 
 // ---------------------------------------------------------------------------
@@ -536,43 +676,6 @@ export async function markAvailabilityRequestFilled(supabase: SupabaseClient, id
 // `applications` list in the store won't have this row yet (it wasn't
 // created through addApplication), so the caller needs the real object
 // back directly rather than looking it up in stale local state.
-export async function bookFromAvailabilityResponse(
-  supabase: SupabaseClient,
-  input: { requestId: string; recipientId: string; artist: Artist; slot: SupportSlot }
-): Promise<{ ok: true; application: Application } | { ok: false; error: string }> {
-  const { data: existing } = await supabase
-    .from("applications")
-    .select(APPLICATION_COLUMNS)
-    .eq("slot_id", input.slot.id)
-    .eq("artist_id", input.artist.id)
-    .maybeSingle();
-
-  let applicationRow = existing;
-
-  if (!applicationRow) {
-    const { data: created, error } = await supabase
-      .from("applications")
-      .insert({
-        slot_id: input.slot.id,
-        artist_id: input.artist.id,
-        status: "shortlisted",
-        message: "Booked from an availability request.",
-        match_percent: computeMatch(input.artist, input.slot),
-      })
-      .select(APPLICATION_COLUMNS)
-      .single();
-    if (error || !created) return { ok: false, error: error?.message ?? "Couldn't start the booking." };
-    applicationRow = created;
-  }
-
-  await supabase
-    .from("availability_request_recipients")
-    .update({ linked_application_id: applicationRow.id })
-    .eq("id", input.recipientId);
-
-  return { ok: true, application: toApplication(applicationRow) };
-}
-
 export async function getAvailabilityRequestsForArtist(
   supabase: SupabaseClient,
   artistId: string
@@ -673,20 +776,6 @@ export async function isPromoterBlocked(supabase: SupabaseClient, artistId: stri
     .eq("promoter_id", promoterId)
     .maybeSingle();
   return !!data;
-}
-
-export async function createReport(
-  supabase: SupabaseClient,
-  input: { reporterId: string; reportedProfileId: string; contextType: "availability_request" | "message" | "other"; contextId?: string; reason: string }
-): Promise<boolean> {
-  const { error } = await supabase.from("reports").insert({
-    reporter_id: input.reporterId,
-    reported_profile_id: input.reportedProfileId,
-    context_type: input.contextType,
-    context_id: input.contextId ?? null,
-    reason: input.reason,
-  });
-  return !error;
 }
 
 // ---------------------------------------------------------------------------
@@ -792,7 +881,6 @@ export async function respondToGigInvitation(
           artist_id: input.artist.id,
           status: "submitted",
           message: "Applied via promoter invitation.",
-          match_percent: computeMatch(input.artist, input.slot),
         })
         .select("id")
         .single();

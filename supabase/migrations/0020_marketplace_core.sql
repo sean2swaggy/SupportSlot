@@ -228,6 +228,7 @@ create table public.email_outbox (
   provider_message_id text,
   attempts integer not null default 0,
   last_error text,
+  claimed_at timestamptz,
   created_at timestamptz not null default now(),
   sent_at timestamptz,
   check ((status = 'sent') = (provider_message_id is not null))
@@ -262,6 +263,37 @@ begin
 end;
 $$;
 revoke all on function public.notify(uuid, text, text, text, text, boolean) from public, anon, authenticated;
+
+-- "Needed tonight" alerts. When a promoter posts an urgent, open listing,
+-- artists who turned last-minute alerts on and whose own travel radius
+-- covers the listing's city get an in-app notification (no email — these are
+-- time-sensitive and emailing them in bulk isn't something we do). Artists
+-- who have blocked the promoter are skipped. Capped so one post can't fan
+-- out without limit.
+create or replace function public.notify_urgent_slot()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_artist record;
+begin
+  if not new.is_urgent or new.status <> 'open' then return new; end if;
+  for v_artist in
+    select a.id from public.artists a
+    where a.last_minute_alerts
+      and public.city_distance_miles(a.location, new.city) <= a.travel_radius_miles
+      and not exists (select 1 from public.promoter_blocks b where b.artist_id = a.id and b.promoter_id = new.promoter_id)
+      and not exists (select 1 from public.profiles p where p.id = a.id and p.suspended_at is not null)
+    limit 500
+  loop
+    perform public.notify(v_artist.id, 'urgent',
+      'Needed tonight: support for ' || new.headliner || ' in ' || new.city || '.',
+      '/slot/' || new.id::text, 'urgent:' || new.id::text, false);
+  end loop;
+  return new;
+end;
+$$;
+create trigger slots_notify_urgent_ai
+  after insert on public.slots
+  for each row execute function public.notify_urgent_slot();
 
 -- Replace the legacy status-change notifier (it knew 'booked' / 'not_selected').
 drop trigger if exists applications_notify_status_change on public.applications;

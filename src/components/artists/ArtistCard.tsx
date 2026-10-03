@@ -3,18 +3,19 @@
 import Link from "next/link";
 import type { Artist } from "@/lib/types";
 import { GenreTag } from "@/components/ui/Tag";
-import MatchBadge from "@/components/ui/MatchBadge";
+import FitSummary from "@/components/ui/FitSummary";
+import type { Fit } from "@/lib/fit";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
 import ArtistAvatarImage from "@/components/artists/ArtistAvatarImage";
 import ArtistMonthlyListenersLabel from "@/components/artists/ArtistMonthlyListenersLabel";
 
 export default function ArtistCard({
   artist,
-  matchPercent,
+  fit,
   children,
 }: {
   artist: Artist;
-  matchPercent?: number;
+  fit?: Fit;
   children?: React.ReactNode;
 }) {
   return (
@@ -40,7 +41,7 @@ export default function ArtistCard({
               {artist.location} · <ArtistMonthlyListenersLabel artist={artist} /> monthly listeners
             </p>
           </Link>
-          {typeof matchPercent === "number" && <MatchBadge percent={matchPercent} size="sm" />}
+          {fit && <FitSummary fit={fit} compact />}
         </div>
         <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1">
           {artist.genres.map((g) => (

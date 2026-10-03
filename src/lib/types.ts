@@ -1,5 +1,4 @@
 // Core domain types for the Support Slot prototype.
-// Everything here is mock/prototype data — no backend yet.
 
 export type Genre =
   | "Alternative"
@@ -25,19 +24,36 @@ export type UKCity =
 
 export type VerificationLevel = "verified" | "unverified";
 
+// The application state machine — enforced by the SQL functions in
+// supabase/migrations/0021_booking_functions.sql, never just by the UI.
 export type ApplicationStatus =
   | "submitted"
   | "viewed"
   | "shortlisted"
-  | "booked"
-  | "not_selected"
-  | "cancelled";
+  | "offered"
+  | "confirmed"
+  | "declined" // the promoter said no
+  | "offer_declined" // the artist said no to an offer
+  | "withdrawn"
+  | "cancelled"; // a confirmed booking was cancelled
+
+export type BookingStatus = "offered" | "confirmed" | "declined" | "withdrawn" | "cancelled";
+
+export type PaymentStatus =
+  | "unpaid"
+  | "processing"
+  | "paid"
+  | "failed"
+  | "partially_refunded"
+  | "refunded"
+  | "disputed";
 
 export interface Track {
   id: string;
   title: string;
   duration: string; // "3:24"
   coverImage: string;
+  url?: string; // optional link to the song (http/https only)
 }
 
 export interface PastShow {
@@ -130,7 +146,9 @@ export interface SupportSlot {
   applicantCount: number;
   isUrgent: boolean;
   postedAt: string; // ISO datetime
-  status: "open" | "filled" | "closed";
+  status: "open" | "filled" | "closed" | "cancelled";
+  // Joined in when the query selected the venue too (avoids a request per card).
+  venue?: Venue;
   artistSizeFit: Array<"emerging" | "developing" | "established">;
   description: string;
 }
@@ -141,9 +159,59 @@ export interface Application {
   artistId: string;
   status: ApplicationStatus;
   submittedAt: string;
+  statusChangedAt: string;
+  viewedAt?: string;
+  closedReason?: string;
   featuredTrackId: string;
   message?: string;
-  matchPercent: number;
+}
+
+// The agreed terms of an offer / confirmed booking — a snapshot taken when
+// the offer was made, so a later edit to the listing can never change what
+// the artist agreed to. Money in integer pence.
+export interface Booking {
+  id: string;
+  applicationId: string | null;
+  slotId: string | null;
+  artistId: string | null;
+  promoterId: string | null;
+  status: BookingStatus;
+  artistName: string;
+  promoterCompany: string;
+  headliner: string;
+  venueName: string;
+  venueAddress: string;
+  venueCity: string;
+  eventDate: string; // YYYY-MM-DD
+  doorsTime: string;
+  setTime: string;
+  setLengthMins: number;
+  requirements: string[];
+  feePence: number;
+  travelPence: number;
+  bookingFeePence: number;
+  processingFeePence: number;
+  totalPence: number;
+  offerMessage?: string;
+  offeredAt: string;
+  offerExpiresAt: string;
+  confirmedAt?: string;
+  cancelledAt?: string;
+  cancelReason?: string;
+  declineReason?: string;
+  refundReviewRequired: boolean;
+  paymentStatus: PaymentStatus;
+  receiptUrl?: string;
+  paidAt?: string;
+  refundedPence: number;
+  disputeStatus?: "open" | "won" | "lost";
+}
+
+export interface PaymentEvent {
+  id: string;
+  kind: string;
+  amountPence: number | null;
+  occurredAt: string;
 }
 
 export interface NotificationItem {
@@ -156,7 +224,21 @@ export interface NotificationItem {
     | "booked"
     | "message"
     | "availability_request"
-    | "availability_response";
+    | "availability_response"
+    | "offer"
+    | "offer_accepted"
+    | "offer_declined"
+    | "application_declined"
+    | "application_withdrawn"
+    | "booking_cancelled"
+    | "listing_changed"
+    | "payment_received"
+    | "payment_failed"
+    | "refund"
+    | "dispute"
+    | "subscription"
+    | "report_update"
+    | "system";
   text: string;
   timeAgo: string;
   read: boolean;
@@ -247,6 +329,7 @@ export interface EventTemplate {
 
 export interface MessageThread {
   id: string;
+  applicationId?: string;
   withName: string;
   withImage: string;
   context: string; // e.g. slot/show name
