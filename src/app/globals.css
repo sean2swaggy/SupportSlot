@@ -59,6 +59,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* iOS Safari/WKWebView zooms the whole page when a focused input's font is
+   under 16px (this app's inputs are text-sm = 14px), which also breaks the
+   layout inside the native app wrapper. Unlayered, so it beats Tailwind's
+   layered utilities; scoped to touch devices so desktop sizing is untouched. */
+@media (hover: none) and (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 ::selection {
   background: var(--color-acid);
   color: var(--color-acid-ink);
