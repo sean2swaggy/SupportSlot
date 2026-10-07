@@ -1,99 +1,93 @@
 # Support Slot — project guide for Claude Code
 
-Read this before making changes. `README.md` has setup, env vars, the
-migration/deploy runbook and the test strategy.
+Read this before making changes. `README.md` has setup and the test commands;
+`docs/CURRENT_STATE.md` says what is and isn't verified.
 
 ## What this is
 
 A UK marketplace connecting independent artists with promoters posting
-"support slot" (opening act) listings. Next.js 16 App Router (middleware is
-named `proxy` in v16 — see `node_modules/next/dist/docs`), React 19,
-TypeScript, Tailwind v4, **Supabase** (Auth with mandatory TOTP 2FA, Postgres
-+ RLS, SQL functions). **Support Slot handles no money**: there is no payment
-provider, booking fee, payout or subscription — an offer records the fee and
-travel the two sides agreed and the promoter pays the artist directly.
+"support slot" (opening act) listings. A **native iOS app** (SwiftUI, iOS 17+,
+`@Observable`, no third-party packages) that talks directly to **Supabase**
+(Auth with mandatory TOTP 2FA, Postgres + RLS, SQL functions). There is no
+website and no server of our own. **No money passes through the platform** —
+the promoter pays the artist directly; there is no payment provider, fee or
+subscription, and every promoter has the promoter tools.
 
 ```
-npm install
-npm run dev        # http://localhost:3000
-npm test           # vitest: unit tests + in-process Postgres tests (no network)
-npm run lint
-npx tsc --noEmit
-npm run build      # must be clean before calling anything done
+npm test                                   # DB tests: real migrations in PGlite
+xcodebuild -project SupportSlot/SupportSlot.xcodeproj -scheme SupportSlot \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test   # Swift tests
+node scripts/make-app-config.mjs           # Secrets.xcconfig from .env.local
 ```
+
+Both test suites and a clean `build` must pass before calling anything done.
 
 ## The rules of this codebase
 
 1. **The database is the authority.** State changes (application → offer →
-   booking, listing close/cancel/reschedule, notifications) are SQL functions
-   in `supabase/migrations/0001_initial_schema.sql`. They lock rows in a fixed order
-   (slot → application → other applications), check who is asking and what
-   state things are in, and are idempotent. Clients have **no** direct
-   UPDATE on `applications`/`bookings`; the UI calls the wrappers in
-   `src/lib/actions.ts`, which return a `Result` — callers must look at it.
-   Never show success before the server said so.
-2. **Agreed terms are a snapshot.** `make_offer` stores the fee and travel in
-   integer pence on the `bookings` row; later edits to the listing can't change
-   them. Travel gets a £10 minimum for long journeys
-   (`effective_travel_pence`, previewed by `src/lib/travel.ts`;
-   `tests/db/travel-parity.test.ts` proves they agree). The browser never
-   decides terms. Do not add payment, fee or "paid" states or claims — the
-   app doesn't take, hold or confirm money, and
-   `tests/db/promoter-tools.test.ts` fails if payment objects reappear.
-3. **No invented numbers.** There is no match percentage. `src/lib/fit.ts`
-   explains genre/location/size fit from real fields. Nothing can be paid
-   for that affects who is shown or booked.
-4. **Access control is one pure function**, `decideAccess` in
-   `src/lib/routes.ts`, used by the proxy (`src/proxy.ts` →
-   `src/lib/supabase/middleware.ts`, the real enforcement) and mirrored by
-   the client shell (`AppGate.tsx`). Add routes to the tables in `routes.ts`
-   and its test. `next` redirects only go through `safeNextPath`
-   (`src/lib/redirect.ts`).
-5. **Schema/code drift fails a test.** `tests/db/query-contract.test.ts`
-   checks every `.from().select/insert/update` column and every `.rpc()`
-   name/argument in `src/` against the schema built from the migrations. If
-   you add a column or function, add it to a migration, not just the code.
-   `0001_initial_schema.sql` is the first file applied to a real project;
-   after that, change the schema only with new numbered files.
-6. **Staff tables are service-role only.** `admin_*`/`staff_*` functions check
-   role in SQL and write an audit row. There is no way to become staff from the app (set
-   `profiles.admin_role` by hand in SQL).
+   booking, listing close/cancel/reschedule, notifications) are SQL functions in
+   `supabase/migrations/0001_initial_schema.sql` and `0002_app_functions.sql`.
+   They lock rows in a fixed order (slot → application → other applications),
+   check who is asking and what state things are in, and are idempotent.
+   Clients have **no** direct UPDATE on `applications`/`bookings`. The app calls
+   them through `Backend/Actions.swift`; `AppStore.perform {}` always re-reads
+   server state after a write. Never show success before the server said so.
+2. **Money is integer pence**, computed in SQL (`make_offer`) and stored on the
+   `bookings` row as a snapshot (`fee_pence` + `travel_pence` only).
+   `Logic/Travel.swift` / `Money` only preview; `tests/db/travel-parity.test.ts`
+   proves they match SQL. The app never sends an amount for an offer.
+3. **No invented numbers.** There is no match percentage. `Logic/Fit.swift`
+   explains genre/location/size fit from real fields.
+4. **Access is decided in one place per layer.** The database enforces RLS; the
+   app's `AppStore` phase order (needsConfig → signedOut → onboarding →
+   mfaSetup → mfaChallenge → suspended → ready) gates what is shown. MFA is
+   enforced client-side (RLS doesn't require aal2) — don't describe it as
+   server-enforced.
+5. **Schema/code drift fails a test.** `tests/db/swift-contract.test.ts` reads
+   the Swift sources and checks every column list (`static let …Columns` under a
+   `// table: x` tag, `Query("table", …)`), filter, embed relationship, write
+   payload key and `rpc("name", [args])` against the schema built from the
+   migrations. When you add a column or function, put it in a migration (a new
+   numbered file once a project has the old ones) and tag new row structs with
+   `// table: x`. Payloads built away from the call go in `REGIONS` in that test.
+6. **Staff tables are role-checked in SQL.** `admin_*`/`staff_*` functions check
+   the role and write an audit row. There is no way to become staff from the
+   app (set `profiles.admin_role` by hand in SQL).
+7. **Secrets.** Only the project host and public anon key go in the app
+   (`Secrets.xcconfig`, gitignored). The service-role key lives in `.env.local`
+   for scripts and must never reach the app or the repo.
 
-## Client state
+## App structure
 
-`src/lib/store.tsx` is a React Context over Supabase (`useStore()`): current
-user/role, artist/promoter profile, applications, bookings, message threads,
-notifications, saved gigs. It reloads on tab focus and every 45 s. Mutators
-return `Result` and refresh from the server rather than guessing. If the
-initial load fails, `loadError` is set and `AppGate` shows a retry screen —
-never an empty dashboard.
+`App/AppStore.swift` is the single observable store (current user/role,
+profiles, applications, bookings, threads, notifications, saved gigs). It
+reloads on foreground and every 45 s; if the initial load fails it shows a
+retry screen — never an empty dashboard. `Backend/` is our own small Supabase
+client (`Transport`, `AuthService`, `Database`/`Query`); `Database` retries once
+after a token refresh on 401. Images are resized JPEG data URLs under 2,000,000
+characters, stored in text columns.
 
 ## Testing layers
 
-- `src/lib/*.test.ts` — pure logic (fit, dates, routes, redirect, listing
-  validation, profile checklist, email sender…).
-- `tests/db/*.test.ts` — **real migrations in PGlite** with stubbed Supabase
-  auth/roles: RLS, triggers, the state machine, promoter tools, rate limits,
-  deletion, search. Single-connection: it cannot prove
-  concurrent behaviour.
-- `scripts/security-regression.mjs` — live negative tests against the
-  configured Supabase project (creates and deletes synthetic users).
-- `scripts/live-journey.mjs` — real parallel connections (two artists accepting
-  the same slot at once) against the configured project.
+- `SupportSlotTests/` — XCTest with `StubURLProtocol` (no network): query
+  encoding, JSON, error mapping, JWT, auth (single-flight refresh, MFA), logic.
+- `tests/db/*.test.ts` — real migrations in PGlite with stubbed Supabase
+  auth/roles: RLS, triggers, the state machine, rate limits, deletion, search,
+  app functions, the Swift contract and travel parity. Single connection — it
+  cannot prove concurrent behaviour.
+- `scripts/live-journey.mjs`, `scripts/security-regression.mjs` — live checks
+  against the configured Supabase project (synthetic users, cleaned up).
 
 ## Gotchas
 
-- `react-hooks/purity`: no `new Date()`/`Date.now()` during render — use a
-  lazy `useState(() => ...)` initializer or an event handler.
-- `react-hooks/set-state-in-effect`: derive state instead of `setState` in an
-  effect; reset modal state with a `key` from the parent.
-- No nested interactive elements inside `<Link>`; use a wrapper with a link
-  plus a sibling actions block (`SlotCard` + `SaveGigButton`).
-- Show dates are UK calendar dates (`YYYY-MM-DD`); use `src/lib/dates.ts`
-  (`londonToday`, …), never `new Date(isoDate)` for day maths.
-- `useSearchParams` needs a `<Suspense>` boundary or the build fails.
-- Design tokens live in `src/app/globals.css` (`@theme inline`); fonts are
-  self-hosted via `@fontsource/*`.
-- On macOS `sed -i` needs `-i ''`.
-- The offer expiry, cancellation reasons, 7-day offer window and travel rules are
-  in SQL — change them there and in the matching test, not in the UI.
+- Show dates are UK calendar dates (`YYYY-MM-DD`); use `Logic/UKDates.swift`
+  (`londonToday`, …), never a `Date` from an ISO date for day maths.
+- Schedule entry times are naive local strings (`start_at`/`end_at`), not
+  timestamps.
+- xcconfig treats `//` as a comment, so `SUPABASE_HOST` has no `https://`.
+- No nested interactive controls inside a `NavigationLink` row; use a sibling
+  actions block.
+- On macOS `sed -i` needs `-i ''`; quote `--include='*.swift'` in zsh.
+- Offer expiry, cancellation reasons, the 7-day offer window and the £10
+  long-journey minimum are in SQL — change them there and in the matching
+  test, not in the UI.

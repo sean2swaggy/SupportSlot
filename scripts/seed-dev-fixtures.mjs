@@ -103,7 +103,7 @@ const rpc = async (key, fn, args) => must(await (await as(key)).rpc(fn, args), `
 async function ensureProfiles(p) {
   const id = ids[p.key];
   const prof = must(await admin.from("profiles").select("username, admin_role").eq("id", id).single(), "read profile");
-  const patch = { has_onboarded: true, email_notifications: false };
+  const patch = { has_onboarded: true };
   if (!prof.username) patch.username = p.username;
   if (p.adminRole && !prof.admin_role) patch.admin_role = p.adminRole;
   must(await admin.from("profiles").update(patch).eq("id", id), "update profile");
