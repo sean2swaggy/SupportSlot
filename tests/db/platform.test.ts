@@ -174,42 +174,37 @@ describe("messaging", () => {
   });
 });
 
-describe("notifications and email outbox", () => {
-  const notify = (profile: string, key: string | null, email: boolean) =>
-    asService(db, (tx) => tx.query(`select public.notify($1, 'system', 'hello there', '/x', $2, $3)`, [profile, key, email]));
+describe("notifications", () => {
+  const notify = (profile: string, key: string | null) =>
+    asService(db, (tx) => tx.query(`select public.notify($1, 'system', 'hello there', '/x', $2, false)`, [profile, key]));
 
-  it("the same event key can't create two notifications or two emails", async () => {
+  it("the same event key can't create two notifications", async () => {
     const p = await makePromoter(db);
-    await notify(p, "k1", true);
-    await notify(p, "k1", true);
+    await notify(p, "k1");
+    await notify(p, "k1");
     expect((await db.query(`select 1 from public.notifications where profile_id = $1`, [p])).rows).toHaveLength(1);
-    expect((await db.query(`select 1 from public.email_outbox where profile_id = $1`, [p])).rows).toHaveLength(1);
   });
 
-  it("respects the email preference, and never shows an email as sent without a provider id", async () => {
+  it("there is no email machinery: no outbox, no email preference", async () => {
+    const t = await db.query(`select 1 from information_schema.tables where table_schema = 'public' and table_name = 'email_outbox'`);
+    expect(t.rows).toHaveLength(0);
+    const c = await db.query(`select 1 from information_schema.columns where table_schema = 'public' and column_name = 'email_notifications'`);
+    expect(c.rows).toHaveLength(0);
+    // a caller that still asks for an email just gets the in-app notification
     const p = await makePromoter(db);
-    await asUser(db, p, (tx) => tx.query(`update public.profiles set email_notifications = false where id = $1`, [p]));
-    await notify(p, "k2", true);
-    expect((await db.query(`select 1 from public.notifications where profile_id = $1`, [p])).rows).toHaveLength(1); // in-app still happens
-    expect((await db.query(`select 1 from public.email_outbox where profile_id = $1`, [p])).rows).toHaveLength(0);
-
-    const q = await makePromoter(db);
-    await notify(q, "k3", true);
-    const id = (await db.query<{ id: string }>(`select id from public.email_outbox where profile_id = $1`, [q])).rows[0].id;
-    await expect(db.query(`update public.email_outbox set status = 'sent' where id = $1`, [id])).rejects.toThrow(/check/i);
-    await db.query(`update public.email_outbox set status = 'sent', provider_message_id = 'msg_1' where id = $1`, [id]);
+    await asService(db, (tx) => tx.query(`select public.notify($1, 'system', 'hi', '/x', 'k9', true)`, [p]));
+    expect((await db.query(`select 1 from public.notifications where profile_id = $1`, [p])).rows).toHaveLength(1);
   });
 
   it("users can read and mark only their own notifications; clients can't create them", async () => {
     const a = await makePromoter(db);
     const b = await makePromoter(db);
-    await notify(a, "k4", false);
+    await notify(a, "k4");
     expect((await asUser(db, b, (tx) => tx.query(`select 1 from public.notifications`))).rows).toHaveLength(0);
     await expect(
       asUser(db, b, (tx) => tx.query(`insert into public.notifications (profile_id, type, text) values ($1, 'system', 'forged')`, [a]))
     ).rejects.toThrow(/row-level security/);
     await expect(asUser(db, b, (tx) => tx.query(`select public.notify($1, 'system', 'x', null, null, false)`, [a]))).rejects.toThrow(/permission denied/);
-    expect((await asUser(db, a, (tx) => tx.query(`select 1 from public.email_outbox`))).rows).toHaveLength(0); // outbox is server-only
   });
 });
 
