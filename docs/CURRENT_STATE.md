@@ -40,3 +40,19 @@ Support Slot is a UK marketplace connecting independent artists with promoters w
 - Terms, Privacy and Trust text has not been reviewed by a lawyer.
 - No signing, TestFlight or App Store listing configured.
 - Supabase dashboard settings the app depends on: redirect URL `supportslot://auth-callback`, email-confirmation behaviour.
+
+## Checklist against the original "fully functional" brief
+
+Decisions made later in the project override parts of that brief: no website, no Stripe or any money handling, Support+ tools free for all promoters, no server of our own.
+
+| Brief section | State |
+|---|---|
+| 1. Accounts and permissions | Built: register, log in/out, email confirmation, reset, mandatory TOTP. Ownership and roles enforced by RLS and SQL functions (tested in `tests/db/security.test.ts`). Role/admin cannot be self-assigned. Live negative tests (`security-regression.mjs`) not yet run on the new project. |
+| 2. Artist profiles | Built: editor, tracks, validated links, resized JPEG photos (no arbitrary file uploads), profile checklist, public profile with private fields excluded. Performance video is a validated link only. |
+| 3. Gig discovery and management | Built: search, filters, paging, saved gigs, create/preview/edit/close/reopen/reschedule, cancelled/expired handling, fit explanation from real fields (no match %). |
+| 4. Applications and bookings | Built in SQL: unique application per artist per slot, valid transitions, one confirmed booking per slot (unique index), terms snapshot. Concurrent behaviour is **not** proven locally — `live-journey.mjs` needs a live project. |
+| 5. Messaging and notifications | Built: participant-only threads, unread state, in-app notifications with dedupe keys. **Email via a provider is not built** (no server); only Supabase Auth's own emails exist. |
+| 6. Payments | **Removed by decision.** No provider, webhook, payout, refund or dispute states. Copy says the promoter pays the artist directly. |
+| 7. Support+ | **Removed as a paid tier by decision.** The tools it advertised (roster, templates, availability requests, schedule, CSV) are built and free; no analytics, no calendar sync claims. |
+| 8. Administration | Built: staff screens, role checks in SQL, audit rows. Staff are made by hand in SQL; no public admin sign-up. |
+| 9. Advertising | Not implemented anywhere. **Future phase**, after core booking is verified live. |
