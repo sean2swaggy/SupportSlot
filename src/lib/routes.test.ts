@@ -11,7 +11,7 @@ describe("public vs private routes", () => {
   it("everything that's personal or that changes things requires an account", () => {
     for (const p of [
       "/applications", "/messages", "/dashboard/artist", "/dashboard/promoter", "/create-slot", "/saved", "/settings",
-      "/support-plus", "/promoter/slot/1/applicants", "/admin", "/admin/reports", "/onboarding", "/mfa-setup", "/reset-password",
+      "/dashboard/promoter/requests", "/promoter/slot/1/applicants", "/admin", "/admin/reports", "/onboarding", "/mfa-setup", "/reset-password",
       "/slot", "/artistry", // not prefixes of the public ones
     ]) {
       expect(isPublicPath(p), p).toBe(false);
@@ -23,7 +23,7 @@ describe("role access", () => {
   it("promoter-only pages bounce artists to their own home, and vice versa", () => {
     expect(roleAccess("/create-slot", "artist", null)).toEqual({ allow: false, redirect: "/" });
     expect(roleAccess("/dashboard/promoter/roster", "artist", null)).toMatchObject({ allow: false });
-    expect(roleAccess("/support-plus", "artist", null)).toMatchObject({ allow: false });
+    expect(roleAccess("/dashboard/promoter/requests", "artist", null)).toMatchObject({ allow: false });
     expect(roleAccess("/applications", "promoter", null)).toEqual({ allow: false, redirect: "/discover" });
     expect(roleAccess("/dashboard/artist", "promoter", null)).toMatchObject({ allow: false });
     expect(roleAccess("/saved", "promoter", null)).toMatchObject({ allow: false });

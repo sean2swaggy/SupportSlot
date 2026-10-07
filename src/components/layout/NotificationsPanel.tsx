@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 const ICONS: Record<string, string> = {
   viewed: "◎",
   shortlisted: "★",
-  match: "◈",
   urgent: "▲",
   booked: "✓",
   message: "✉",
@@ -21,15 +20,10 @@ const ICONS: Record<string, string> = {
   application_withdrawn: "○",
   booking_cancelled: "✕",
   listing_changed: "↻",
-  payment_received: "£",
-  payment_failed: "!",
-  refund: "£",
-  dispute: "!",
-  subscription: "★",
   report_update: "⚑",
   system: "•",
 };
-const WARN = new Set(["urgent", "payment_failed", "dispute", "booking_cancelled"]);
+const WARN = new Set(["urgent", "booking_cancelled"]);
 
 export default function NotificationsPanel() {
   const { notifications, unreadNotificationCount, markNotificationRead, markAllNotificationsRead } =

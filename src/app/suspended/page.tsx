@@ -12,7 +12,7 @@ export default function SuspendedPage() {
       <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-signal mb-3">Account suspended</p>
       <h1 className="font-display uppercase text-4xl leading-none tracking-tight">This account is suspended</h1>
       <p className="mt-4 text-paper-dim">
-        You can&rsquo;t apply, post, message or make payments while an account is suspended. Anything you had in progress was left as
+        You can&rsquo;t apply, post or message while an account is suspended. Anything you had in progress was left as
         it was. If you think this is a mistake, contact support and tell us what happened.
       </p>
       <div className="mt-8 flex flex-col sm:flex-row gap-3">

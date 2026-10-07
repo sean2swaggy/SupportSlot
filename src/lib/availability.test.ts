@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_RECIPIENTS_PER_REQUEST,
-  isActiveSubscriptionStatus,
   isRequestExpired,
   requestStatusLabel,
   validateRecipients,
@@ -108,15 +107,3 @@ describe("requestStatusLabel", () => {
   });
 });
 
-describe("isActiveSubscriptionStatus", () => {
-  it("treats active and trialing as active", () => {
-    expect(isActiveSubscriptionStatus("active")).toBe(true);
-    expect(isActiveSubscriptionStatus("trialing")).toBe(true);
-  });
-
-  it("treats every other Stripe subscription status as inactive", () => {
-    for (const status of ["canceled", "past_due", "incomplete", "incomplete_expired", "unpaid", "paused"]) {
-      expect(isActiveSubscriptionStatus(status)).toBe(false);
-    }
-  });
-});

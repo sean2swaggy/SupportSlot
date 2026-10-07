@@ -72,7 +72,6 @@ export const PEOPLE = [
   },
   {
     key: "promB", login: true, role: "promoter", email: `demo-promoter-plus@${DOMAIN}`, username: "demo_harbour_co",
-    supportPlus: true,
     promoter: { name: "Lena Brandt", company: "Harbour & Co. Sessions (Demo)", location: "London" },
   },
   {

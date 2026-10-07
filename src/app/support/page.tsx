@@ -7,7 +7,6 @@ import Button from "@/components/ui/Button";
 
 const TOPICS = [
   { value: "account", label: "My account or login" },
-  { value: "payment", label: "A payment or payout" },
   { value: "booking", label: "A booking" },
   { value: "bug", label: "Something isn't working" },
   { value: "other", label: "Something else" },

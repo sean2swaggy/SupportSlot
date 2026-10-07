@@ -31,7 +31,7 @@ function EmailPreference() {
     <Section title="Email notifications">
       <label className="flex items-start justify-between gap-4 cursor-pointer">
         <span className="text-sm">
-          Email me when something needs my attention (an offer, a booking change, a payment).
+          Email me when something needs my attention (an offer, a booking change, a message).
           <span className="block text-xs text-paper-dim mt-1">
             In-app notifications always work. Emails are only sent when our email provider is set up for this site, and only
             counted as sent once the provider confirms it.
@@ -169,9 +169,9 @@ function DeleteAccount() {
   return (
     <Section title="Delete account">
       <p className="text-sm text-paper-dim max-w-[60ch]">
-        Permanently deletes your profile, messages and saved gigs, and withdraws anything still open. Booking and payment records are
-        kept (we&rsquo;re required to), but are no longer linked to you. You can&rsquo;t delete while you have an upcoming confirmed
-        booking or an unresolved payment.
+        Permanently deletes your profile, messages and saved gigs, and withdraws anything still open. Past booking records are
+        kept, but are no longer linked to you. You can&rsquo;t delete while you have an upcoming confirmed booking &mdash; cancel it
+        first.
       </p>
       <Button variant="danger" size="sm" className="mt-4" onClick={() => { setOpen(true); setConfirm(""); setError(null); setDetail(null); }}>
         Delete my account…

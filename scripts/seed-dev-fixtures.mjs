@@ -4,14 +4,14 @@
 //   SEED_CONFIRM_PROJECT_REF=<project ref> node scripts/seed-dev-fixtures.mjs
 //   SEED_CONFIRM_PROJECT_REF=<project ref> node scripts/seed-dev-fixtures.mjs --reset
 //
-// - Refuses to run unless you type the project ref AND Stripe is in test mode.
-// - Needs migrations 0001–0023 applied (checks, and stops with a message).
+// - Refuses to run unless you type the project ref.
+// - Needs supabase/migrations/0001_initial_schema.sql applied (checks, and stops with a message).
 // - Idempotent: everything has a fixed id or is looked up first; re-running
 //   adds nothing twice and never overwrites edits you made in the app.
 // - Goes through the real SQL functions / RPCs as the real users, so the data
 //   is exactly what the app would have produced (offers, bookings, notifications).
-// - No Stripe calls, no real emails (demo accounts have email notifications
-//   off, and use example.com addresses), no fabricated payments.
+// - No real emails (demo accounts have email notifications off and use
+//   example.com addresses). The app handles no money, so there are no payments.
 // - Passwords and authenticator secrets go to .dev-fixtures/ (gitignored).
 
 import fs from "fs";
@@ -36,7 +36,7 @@ async function preflight() {
   const b = await admin.from("bookings").select("id").limit(1);
   const s = await admin.rpc("search_slots", {});
   if (b.error || (s.error && /could not find|does not exist|schema cache/i.test(s.error.message))) {
-    console.error("Migrations 0020–0023 are not applied to this project (bookings / search_slots missing). Apply 0001–0023 in order first.");
+    console.error("The schema isn't applied to this project (bookings / search_slots missing). Run supabase/migrations/0001_initial_schema.sql in the SQL editor first.");
     process.exit(1);
   }
 }
@@ -102,7 +102,7 @@ const rpc = async (key, fn, args) => must(await (await as(key)).rpc(fn, args), `
 // ---------------------------------------------------------------- profiles
 async function ensureProfiles(p) {
   const id = ids[p.key];
-  const prof = must(await admin.from("profiles").select("username, admin_role, support_plus_status").eq("id", id).single(), "read profile");
+  const prof = must(await admin.from("profiles").select("username, admin_role").eq("id", id).single(), "read profile");
   const patch = { has_onboarded: true, email_notifications: false };
   if (!prof.username) patch.username = p.username;
   if (p.adminRole && !prof.admin_role) patch.admin_role = p.adminRole;
@@ -133,15 +133,6 @@ async function ensureProfiles(p) {
     const imgs = imageFor(p.key);
     must(await admin.from("promoters").upsert({ id, ...p.promoter, avatar_url: imgs.avatar }, { onConflict: "id", ignoreDuplicates: true }), `promoter ${p.promoter.company}`);
   }
-  if (p.supportPlus && !prof.support_plus_status) {
-    const end = new Date(Date.now() + 30 * 864e5).toISOString();
-    must(await admin.rpc("apply_subscription_state", {
-      p_event_id: "evt_demo_fixture", p_occurred: new Date().toISOString(), p_promoter_id: id,
-      p_subscription_id: "sub_demo_fixture", p_status: "active", p_period_end: end,
-      p_cancel_at_period_end: false, p_billing_period: "monthly",
-    }), "support+ state");
-    log("  + Support+ (demo state, not a real Stripe subscription) for " + p.email);
-  }
 }
 
 // ------------------------------------------------------------------ slots
@@ -162,7 +153,7 @@ async function seedSlots() {
       city: { "venue-1": "London", "venue-2": "Manchester", "venue-3": "Bristol", "venue-4": "Birmingham", "venue-5": "Leeds", "venue-6": "Brighton" }[s.venue],
       date: londonDate(s.days), doors_time: "19:00", set_time: "19:45", performance_length_mins: 30,
       genres: s.genres, expected_attendance: s.attendance, support_fee: s.fee, travel_contribution: s.travel,
-      booking_fee: 12, requirements: s.reqs, application_deadline: londonDate(s.deadline),
+      requirements: s.reqs, application_deadline: londonDate(s.deadline),
       is_urgent: !!s.urgent, artist_size_fit: s.sizeFit, description: s.desc,
     }), `insert listing ${s.n}`);
     if (fresh) log(`  + listing ${s.n} "${s.headliner}"`);
@@ -255,10 +246,10 @@ async function ensureMfa(p) {
 
 function writeSummary() {
   const rows = PEOPLE.filter((p) => p.login).map((p) => {
-    const label = p.key === "artist1" ? "Artist" : p.key === "artist2" ? "Second artist" : p.key === "promA" ? "Promoter (free)" : p.key === "promB" ? "Promoter (Support+ demo state)" : "Admin";
+    const label = p.key === "artist1" ? "Artist" : p.key === "artist2" ? "Second artist" : p.key === "promA" ? "Promoter (free)" : p.key === "promB" ? "Second promoter" : "Admin";
     return `| ${label} | ${p.email} | ${accounts[p.email].password} | \`node scripts/totp.mjs ${p.email.replace(/^demo-|@.*$/g, "")}\` |`;
   });
-  const md = `# Demo logins (fictional, local/test only — do not commit)\n\nProject: ${ref}\n\n| Role | Email | Password | 2FA code |\n|---|---|---|---|\n${rows.join("\n")}\n\nAfter the password, the app asks for a 6-digit code: run the command in the last column.\nThese accounts have email notifications switched off and use ${DOMAIN} addresses, so nothing is ever emailed.\nSupport+ on the Harbour & Co. account is a demo flag, not a real Stripe subscription: Manage billing will not show a real subscription.\n`;
+  const md = `# Demo logins (fictional, local/test only — do not commit)\n\nProject: ${ref}\n\n| Role | Email | Password | 2FA code |\n|---|---|---|---|\n${rows.join("\n")}\n\nAfter the password, the app asks for a 6-digit code: run the command in the last column.\nThese accounts have email notifications switched off and use ${DOMAIN} addresses, so nothing is ever emailed.\n`;
   fs.writeFileSync(new URL("TEST_ACCOUNTS.md", FIXTURE_DIR), md, { mode: 0o600 });
 }
 

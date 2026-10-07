@@ -27,7 +27,7 @@ export default function Footer() {
           { href: "/discover", label: "Discover Artists" },
           { href: "/dashboard/promoter", label: "My Gigs" },
           { href: "/create-slot", label: "Post a Slot" },
-          { href: "/support-plus", label: "Support+" },
+          { href: "/dashboard/promoter/roster", label: "Artist Roster" },
         ];
   const secondColLinks = !signedIn
     ? [

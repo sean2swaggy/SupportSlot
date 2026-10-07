@@ -17,11 +17,10 @@ export function loadEnv() {
     url: get("NEXT_PUBLIC_SUPABASE_URL"),
     anon: get("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     service: get("SUPABASE_SERVICE_ROLE_KEY"),
-    stripe: get("STRIPE_SECRET_KEY"),
   };
 }
 
-/** Refuses to run unless the operator typed this project's ref and Stripe is in test mode. */
+/** Refuses to run unless the operator typed this project's ref. */
 export function guard(env) {
   const ref = new URL(env.url).hostname.split(".")[0];
   if (process.env.SEED_CONFIRM_PROJECT_REF !== ref) {
@@ -30,10 +29,6 @@ export function guard(env) {
         `Only do that on a TEST project. If that is what you want, re-run with:\n\n` +
         `  SEED_CONFIRM_PROJECT_REF=${ref} node scripts/seed-dev-fixtures.mjs\n`
     );
-    process.exit(1);
-  }
-  if (env.stripe && !env.stripe.startsWith("sk_test_")) {
-    console.error("Refusing to run: STRIPE_SECRET_KEY is not a test-mode key.");
     process.exit(1);
   }
   return ref;

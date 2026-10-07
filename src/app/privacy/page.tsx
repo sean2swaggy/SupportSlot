@@ -9,7 +9,7 @@ export default function PrivacyPage() {
       <h1 className="font-display uppercase text-4xl sm:text-5xl leading-[0.95] tracking-tight">
         Privacy Policy
       </h1>
-      <p className="mt-4 text-sm text-paper-dim">Last updated: 3 October 2026</p>
+      <p className="mt-4 text-sm text-paper-dim">Last updated: 7 October 2026</p>
 
       <div className="mt-10 space-y-10 text-paper-dim [&_h2]:font-display [&_h2]:text-2xl [&_h2]:text-paper [&_h2]:mb-3 [&_p]:leading-relaxed [&_p+p]:mt-3 [&_li]:leading-relaxed [&_ul]:mt-3 [&_ul]:space-y-2 [&_ul]:list-disc [&_ul]:pl-5">
         <section>
@@ -47,13 +47,9 @@ export default function PrivacyPage() {
             platform.
           </p>
           <p>
-            <span className="text-paper">Payment &amp; payout data.</span> Card payments are
-            entered directly into Stripe&rsquo;s own secure payment form — our servers never see
-            or store your full card number. For artists receiving payouts, identity verification
-            and bank account details are collected directly by Stripe as part of onboarding a
-            Stripe Connect account; we only store a reference to that Stripe account and whether
-            it&rsquo;s able to receive payouts, not the underlying documents or bank details
-            themselves.
+            <span className="text-paper">Payments.</span> Support Slot doesn&rsquo;t take, process or
+            store payments, so we never collect card or bank details. An offer records the fee and
+            travel the promoter agreed to pay; the promoter pays the artist directly.
           </p>
           <p>
             <span className="text-paper">Reports and support requests.</span> If you report
@@ -72,7 +68,6 @@ export default function PrivacyPage() {
           <ul>
             <li>To create and run your account, and gate the platform behind sign-up</li>
             <li>To operate the marketplace — listings, applications, offers, bookings, messaging</li>
-            <li>To process payments and payouts through Stripe when a promoter pays for a confirmed booking</li>
             <li>To send you notifications about applications, bookings and messages — always in the app, and by email only if you haven&rsquo;t turned email off and an email provider is configured for the site</li>
             <li>To investigate reports made under our Trust &amp; Safety policies</li>
             <li>To meet our legal and regulatory obligations</li>
@@ -81,20 +76,6 @@ export default function PrivacyPage() {
 
         <section>
           <h2>4. Who we share it with</h2>
-          <p>
-            <span className="text-paper">Stripe</span>, to process payments and payouts. Stripe
-            acts as an independent controller for the identity and bank details it collects
-            directly from artists during Connect onboarding — see{" "}
-            <a
-              href="https://stripe.com/gb/privacy"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-acid"
-            >
-              Stripe&rsquo;s privacy policy
-            </a>
-            .
-          </p>
           <p>
             <span className="text-paper">Supabase</span>, our database and authentication
             infrastructure provider, which stores your account and profile data on our behalf.
@@ -122,10 +103,9 @@ export default function PrivacyPage() {
             We keep your account and activity data for as long as your account is active. You can
             download a copy of your data, and delete your account, yourself from Settings. Deleting
             removes your profile, messages and saved gigs and withdraws anything still open. We keep
-            booking and payment records, as we&rsquo;re legally required to (for example, for tax),
-            but they are no longer linked to your account — they keep only the names shown at the
-            time. An account can&rsquo;t be deleted while there is an upcoming confirmed booking or an
-            unresolved payment.
+            records of past bookings (the agreed terms and the names shown at the time) so the other
+            person&rsquo;s history stays accurate, but they are no longer linked to your account. An
+            account can&rsquo;t be deleted while there is an upcoming confirmed booking.
           </p>
         </section>
 

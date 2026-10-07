@@ -188,8 +188,8 @@ export default function RequestComposerModal({
               ))}
             </div>
             <p className="mt-4 text-[11px] text-paper-dim">
-              This is an availability enquiry, not a booking or a guaranteed offer — no payment is
-              taken and nothing is reserved until you complete a real booking afterwards.
+              This is an availability enquiry, not a booking or a guaranteed offer — nothing is
+              reserved until you make an offer and the artist accepts it.
             </p>
             {error && <p className="mt-3 text-sm text-signal">{error}</p>}
             <div className="mt-5 flex gap-3">
@@ -355,7 +355,7 @@ export default function RequestComposerModal({
             </div>
 
             <p className="mt-5 text-[11px] text-paper-dim">
-              This sends an availability check, never a payment or a reservation — artists never
+              This sends an availability check, never a reservation — artists never
               pay to be asked, and answering doesn&rsquo;t cost them anything either way.
             </p>
             <Button

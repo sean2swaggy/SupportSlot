@@ -13,9 +13,9 @@ function csvField(v: string | number) {
 
 const pounds = (pence: number) => (pence / 100).toFixed(2);
 
-// Booking & payment report export — Support+ only, enforced here against a
-// fresh read of the caller's own profile. Built from the agreed booking terms
-// and real payment state, not from the live listing.
+// Bookings export (CSV) for promoters. Built from the agreed booking terms
+// stored on each booking, not from the live listing. Support Slot doesn't
+// handle payment, so the amounts are what was agreed, not what was paid.
 export async function GET() {
   const supabase = await createClient();
   const {
@@ -23,12 +23,9 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Please log in again." }, { status: 401 });
 
-  const { data: profile } = await supabase.from("profiles").select("role, is_support_plus").eq("id", user.id).maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (profile?.role !== "promoter") {
     return NextResponse.json({ error: "Reports are only available for promoter accounts." }, { status: 403 });
-  }
-  if (!profile.is_support_plus) {
-    return NextResponse.json({ error: "Report exports need an active Support+ subscription." }, { status: 402 });
   }
 
   const { data, error } = await supabase
@@ -39,10 +36,9 @@ export async function GET() {
   if (error) return NextResponse.json({ error: "We couldn't build that report just now." }, { status: 500 });
 
   const rows = [
-    "booking_id,status,payment_status,artist,show,venue,city,event_date,artist_fee_gbp,travel_gbp,booking_fee_gbp,processing_fee_gbp,total_gbp,refunded_gbp",
+    "booking_id,status,artist,show,venue,city,event_date,agreed_fee_gbp,agreed_travel_gbp",
     ...(data as unknown as BookingRow[]).map(toBooking).map((b) =>
-      [b.id, b.status, b.paymentStatus, b.artistName, b.headliner, b.venueName, b.venueCity, b.eventDate,
-       pounds(b.feePence), pounds(b.travelPence), pounds(b.bookingFeePence), pounds(b.processingFeePence), pounds(b.totalPence), pounds(b.refundedPence)]
+      [b.id, b.status, b.artistName, b.headliner, b.venueName, b.venueCity, b.eventDate, pounds(b.feePence), pounds(b.travelPence)]
         .map(csvField).join(",")
     ),
   ];

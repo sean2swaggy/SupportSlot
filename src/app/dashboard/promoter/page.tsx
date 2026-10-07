@@ -79,10 +79,6 @@ export default function PromoterDashboard() {
   const shortlisted = applicationsForMySlots.filter((a) => a.status === "shortlisted");
   const booked = applicationsForMySlots.filter((a) => a.status === "confirmed");
   const pendingApplicants = applicationsForMySlots.filter((a) => ["submitted", "viewed", "shortlisted", "offered"].includes(a.status));
-  // Things waiting on the promoter: pay for confirmed bookings.
-  const awaitingPayment = bookings.filter(
-    (b) => b.status === "confirmed" && (b.paymentStatus === "unpaid" || b.paymentStatus === "failed" || b.paymentStatus === "processing")
-  );
 
   if (!currentPromoter) return null;
   const promoter = currentPromoter;
@@ -146,31 +142,6 @@ export default function PromoterDashboard() {
         <p className="mt-6 text-sm text-signal" role="alert">
           {slotsError}
         </p>
-      )}
-
-      {awaitingPayment.length > 0 && (
-        <div className="mt-10 border border-acid/60 bg-acid/5 p-5">
-          <p className="font-mono text-[10px] uppercase tracking-widest text-acid">Needs your attention</p>
-          <p className="mt-1 text-sm text-paper-dim">
-            These artists have accepted. The booking is only complete once you&rsquo;ve paid.
-          </p>
-          <div className="mt-4 space-y-4">
-            {awaitingPayment.map((b) => {
-              const app = applications.find((a) => a.id === b.applicationId);
-              if (!app) return null;
-              return (
-                <div key={b.id} className="border-t border-acid/20 pt-4 first:border-0 first:pt-0">
-                  <p className="text-sm">
-                    {b.artistName} — {b.headliner}, {formatDate(b.eventDate)}
-                  </p>
-                  <div className="mt-2">
-                    <PromoterApplicantControls application={app} booking={b} slotOpen={false} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
       )}
 
       <div id="applicants" className="mt-14 scroll-mt-24">

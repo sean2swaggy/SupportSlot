@@ -191,8 +191,8 @@ export default async function Home() {
               No pay-to-play. No application fees.
             </p>
             <p className="mt-2 max-w-[52ch] text-sm sm:text-base opacity-80">
-              Artists keep their full agreed performance fee. Support Slot charges
-              promoters a small booking fee — never the artist.
+              Artists keep their full agreed fee, paid directly by the promoter.
+              Support Slot never charges artists or takes a cut.
             </p>
           </div>
           <Button href="/trust" variant="secondary" size="md" className="shrink-0">

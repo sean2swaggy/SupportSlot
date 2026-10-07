@@ -15,9 +15,9 @@ function Row({ label, value, bold, note }: { label: string; value: string; bold?
 
 /**
  * The agreed terms exactly as stored on the booking when the offer was made.
- * Later edits to the listing can't change these. The artist sees what they
- * receive; the promoter also sees the booking-fee and processing lines they
- * pay on top.
+ * Later edits to the listing can't change these. Support Slot doesn't handle
+ * money: the promoter pays the artist directly, so there is only the fee and
+ * travel the two sides agreed.
  */
 export default function BookingTerms({ booking, viewer }: { booking: Booking; viewer: "artist" | "promoter" }) {
   return (
@@ -29,15 +29,12 @@ export default function BookingTerms({ booking, viewer }: { booking: Booking; vi
         <Row label="Doors / on stage" value={`${booking.doorsTime.slice(0, 5)} / ${booking.setTime.slice(0, 5)}`} note={`${booking.setLengthMins}-minute set`} />
         <Row label="Performance fee" value={formatPence(booking.feePence)} />
         {booking.travelPence > 0 && <Row label="Travel contribution" value={formatPence(booking.travelPence)} />}
-        {viewer === "artist" ? (
-          <Row label="You receive" value={formatPence(booking.feePence + booking.travelPence)} bold note="Support Slot's fees are paid by the promoter, never taken from you." />
-        ) : (
-          <>
-            <Row label="Support Slot booking fee" value={formatPence(booking.bookingFeePence)} />
-            <Row label="Card processing" value={formatPence(booking.processingFeePence)} />
-            <Row label="Total you pay" value={formatPence(booking.totalPence)} bold />
-          </>
-        )}
+        <Row
+          label={viewer === "artist" ? "You'll be paid" : "You pay the artist"}
+          value={formatPence(booking.feePence + booking.travelPence)}
+          bold
+          note="Paid directly between you and the other side — Support Slot doesn't take or hold payment."
+        />
       </div>
       {booking.requirements.length > 0 && (
         <p className="mt-3 text-xs text-paper-dim">

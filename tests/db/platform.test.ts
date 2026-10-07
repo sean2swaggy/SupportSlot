@@ -286,7 +286,7 @@ describe("moderation, support and staff access", () => {
     await asUser(db, artist, (tx) => tx.query(`insert into public.applications (slot_id, artist_id) values ($1,$2)`, [slot, artist]));
   });
 
-  it("moderators can remove a listing (applicants told, audited) but can't see payments; admins can; only admins verify", async () => {
+  it("moderators can remove a listing (applicants told, audited) but can't see the bookings list; admins can; only admins verify", async () => {
     const mod = await staff("moderator");
     const admin = await staff("admin");
     const promoter = await makePromoter(db);

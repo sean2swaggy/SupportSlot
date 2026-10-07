@@ -24,7 +24,7 @@ export function clientIp(request: Request): string {
  * Postgres-backed limiter (rate_limit_hit in 0020) so the limit holds across
  * every serverless instance. Returns a 429 response to send, or null if the
  * caller is within the limit. Fails OPEN on a limiter error — a database
- * hiccup shouldn't take payments down — but logs it.
+ * hiccup shouldn't take the site down — but logs it.
  */
 export async function limited(key: string, limit: number, windowSeconds: number) {
   try {

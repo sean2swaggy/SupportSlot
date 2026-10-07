@@ -11,7 +11,7 @@ export async function GET() {
   const { supabase, user } = auth;
 
   const [profile, artist, promoter, applications, bookings, notifications, saved, threads, messages, reports, support] = await Promise.all([
-    supabase.from("profiles").select("id, role, email, username, has_onboarded, email_notifications, support_plus_status, created_at").eq("id", user.id).maybeSingle(),
+    supabase.from("profiles").select("id, role, email, username, has_onboarded, email_notifications, created_at").eq("id", user.id).maybeSingle(),
     supabase.from("artists").select("*").eq("id", user.id).maybeSingle(),
     supabase.from("promoters").select("*").eq("id", user.id).maybeSingle(),
     supabase.from("applications").select("*").order("submitted_at", { ascending: false }),

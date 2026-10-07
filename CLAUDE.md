@@ -9,8 +9,9 @@ A UK marketplace connecting independent artists with promoters posting
 "support slot" (opening act) listings. Next.js 16 App Router (middleware is
 named `proxy` in v16 — see `node_modules/next/dist/docs`), React 19,
 TypeScript, Tailwind v4, **Supabase** (Auth with mandatory TOTP 2FA, Postgres
-+ RLS, SQL functions) and **Stripe** (PaymentIntents + Connect for artist
-payouts, Billing for Support+).
++ RLS, SQL functions). **Support Slot handles no money**: there is no payment
+provider, booking fee, payout or subscription — an offer records the fee and
+travel the two sides agreed and the promoter pays the artist directly.
 
 ```
 npm install
@@ -24,23 +25,24 @@ npm run build      # must be clean before calling anything done
 ## The rules of this codebase
 
 1. **The database is the authority.** State changes (application → offer →
-   booking → payment, listing close/cancel/reschedule, notifications) are SQL
-   functions in `supabase/migrations/0021_booking_functions.sql` /
-   `0022_payments_and_billing.sql`. They lock rows in a fixed order
+   booking, listing close/cancel/reschedule, notifications) are SQL functions
+   in `supabase/migrations/0001_initial_schema.sql`. They lock rows in a fixed order
    (slot → application → other applications), check who is asking and what
    state things are in, and are idempotent. Clients have **no** direct
    UPDATE on `applications`/`bookings`; the UI calls the wrappers in
    `src/lib/actions.ts`, which return a `Result` — callers must look at it.
    Never show success before the server said so.
-2. **Money is integer pence**, computed in SQL (`make_offer`) and stored on
-   the `bookings` row as a snapshot. `src/lib/stripe/fees.ts` only previews;
-   `tests/db/fees-parity.test.ts` proves it matches SQL. The browser never
-   sends an amount. A booking is "paid" only via the verified webhook
-   (`src/lib/stripe/webhook-handler.ts` → SQL) or the provider-verified sync
-   route — never because a page loaded.
+2. **Agreed terms are a snapshot.** `make_offer` stores the fee and travel in
+   integer pence on the `bookings` row; later edits to the listing can't change
+   them. Travel gets a £10 minimum for long journeys
+   (`effective_travel_pence`, previewed by `src/lib/travel.ts`;
+   `tests/db/travel-parity.test.ts` proves they agree). The browser never
+   decides terms. Do not add payment, fee or "paid" states or claims — the
+   app doesn't take, hold or confirm money, and
+   `tests/db/promoter-tools.test.ts` fails if payment objects reappear.
 3. **No invented numbers.** There is no match percentage. `src/lib/fit.ts`
-   explains genre/location/size fit from real fields. Support+ never affects
-   who is shown or booked.
+   explains genre/location/size fit from real fields. Nothing can be paid
+   for that affects who is shown or booked.
 4. **Access control is one pure function**, `decideAccess` in
    `src/lib/routes.ts`, used by the proxy (`src/proxy.ts` →
    `src/lib/supabase/middleware.ts`, the real enforcement) and mirrored by
@@ -51,9 +53,10 @@ npm run build      # must be clean before calling anything done
    checks every `.from().select/insert/update` column and every `.rpc()`
    name/argument in `src/` against the schema built from the migrations. If
    you add a column or function, add it to a migration, not just the code.
-6. **Staff and payment tables are service-role only.** Stripe ids live in
-   private tables; `admin_*`/`staff_*` functions check role in SQL and write
-   an audit row. There is no way to become staff from the app (set
+   `0001_initial_schema.sql` is the first file applied to a real project;
+   after that, change the schema only with new numbered files.
+6. **Staff tables are service-role only.** `admin_*`/`staff_*` functions check
+   role in SQL and write an audit row. There is no way to become staff from the app (set
    `profiles.admin_role` by hand in SQL).
 
 ## Client state
@@ -67,16 +70,16 @@ never an empty dashboard.
 
 ## Testing layers
 
-- `src/lib/*.test.ts` — pure logic (fit, dates, fees, routes, redirect, listing
-  validation, profile checklist, email sender, webhook idempotency…).
+- `src/lib/*.test.ts` — pure logic (fit, dates, routes, redirect, listing
+  validation, profile checklist, email sender…).
 - `tests/db/*.test.ts` — **real migrations in PGlite** with stubbed Supabase
-  auth/roles: RLS, triggers, the state machine, payments, subscriptions,
-  rate limits, deletion, search. Single-connection: it cannot prove
+  auth/roles: RLS, triggers, the state machine, promoter tools, rate limits,
+  deletion, search. Single-connection: it cannot prove
   concurrent behaviour.
 - `scripts/security-regression.mjs` — live negative tests against the
   configured Supabase project (creates and deletes synthetic users).
-- Stripe in tests is faked at the `WebhookDeps` boundary; a real test-mode
-  payment needs a connected test account and is a manual step.
+- `scripts/live-journey.mjs` — real parallel connections (two artists accepting
+  the same slot at once) against the configured project.
 
 ## Gotchas
 
@@ -92,5 +95,5 @@ never an empty dashboard.
 - Design tokens live in `src/app/globals.css` (`@theme inline`); fonts are
   self-hosted via `@fontsource/*`.
 - On macOS `sed -i` needs `-i ''`.
-- The offer expiry, cancellation reasons, 7-day offer window and fee rules are
+- The offer expiry, cancellation reasons, 7-day offer window and travel rules are
   in SQL — change them there and in the matching test, not in the UI.

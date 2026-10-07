@@ -4,7 +4,7 @@
 // Runs the real marketplace journey against the Supabase project in
 // .env.local, with SYNTHETIC accounts only, through real signed-in sessions
 // (so row-level security and the SQL functions are exercised exactly as the
-// app uses them). It does NOT touch Stripe, send email, or call any
+// app uses them). It does NOT send email or call any
 // production-only setting. Everything it creates is removed in `finally`.
 //
 // What it adds over the in-process Postgres tests (tests/db): REAL parallel
@@ -14,7 +14,7 @@
 //
 //   node scripts/live-journey.mjs
 //
-// Requires migrations 0020–0023 to be applied. Exit code 0 only if all pass.
+// Requires supabase/migrations/0001_initial_schema.sql to be applied. Exit code 0 only if all pass.
 
 import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
@@ -88,7 +88,7 @@ async function main() {
     .insert({
       promoter_id: promoter.id, venue_id: venueId, headliner: `Journey Show ${RUN}`, city: "London",
       date: iso(40), doors_time: "19:00", set_time: "20:00", performance_length_mins: 30,
-      expected_attendance: 200, support_fee: 120, travel_contribution: 20, booking_fee: 10,
+      expected_attendance: 200, support_fee: 120, travel_contribution: 20,
       application_deadline: iso(20), genres: ["Indie"],
     })
     .select("id")
@@ -157,10 +157,8 @@ async function main() {
 
   {
     const { data: bk } = await admin.from("bookings").select("*").eq("application_id", appA).single();
-    const base = bk.fee_pence + bk.travel_pence + bk.booking_fee_pence;
-    const processing = Math.floor((15 * base + 20 * 1000 + 984) / 985);
-    check("Stored terms: fee/travel/booking fee come from the listing", bk.fee_pence === 12000 && bk.travel_pence === 2000 && bk.booking_fee_pence === 1000, JSON.stringify({ f: bk.fee_pence, t: bk.travel_pence, b: bk.booking_fee_pence }));
-    check("Stored terms: processing fee and total follow the documented formula", bk.processing_fee_pence === processing && bk.total_pence === base + processing, `processing ${bk.processing_fee_pence}, total ${bk.total_pence}`);
+    check("Stored terms: fee and travel come from the listing", bk.fee_pence === 12000 && bk.travel_pence === 2000, JSON.stringify({ f: bk.fee_pence, t: bk.travel_pence }));
+    check("No money is handled: no fee, total or payment columns on a booking", !("total_pence" in bk) && !("payment_status" in bk) && !("booking_fee_pence" in bk), Object.keys(bk).join(","));
   }
   {
     const { error } = await promoter.client.rpc("reschedule_slot", { p_slot_id: slot.id, p_date: iso(41), p_doors: "19:00", p_set: "20:00" });
@@ -240,7 +238,7 @@ async function main() {
     const { data: queue, error: qError } = await staff.client.rpc("staff_open_reports", { p_status: "open", p_limit: 50 });
     check("A moderator can read the queue", !qError && queue?.some((r) => r.id === reportId), errText(qError));
     const { error: payDenied } = await staff.client.rpc("admin_recent_bookings", { p_limit: 5 });
-    check("A moderator can't read payments (admin only)", !!payDenied, errText(payDenied));
+    check("A moderator can't read the bookings list (admin only)", !!payDenied, errText(payDenied));
     const { error: updateError } = await staff.client.rpc("admin_update_report", { p_report_id: reportId, p_status: "dismissed", p_note: "synthetic" });
     check("A moderator can resolve a report", !updateError, errText(updateError));
     const { data: audit } = await admin.from("admin_audit_log").select("action").eq("target_id", reportId);
@@ -257,43 +255,11 @@ async function main() {
     const { error: lateApply } = await artistC.client.from("applications").insert({ slot_id: slot.id, artist_id: artistC.id });
     check("Nobody can apply to a closed listing", !!lateApply, errText(lateApply));
   }
-
-  // --- Payment functions (service role, fabricated event — no Stripe) --------
-  {
-    const { data: s2 } = await promoter.client
-      .from("slots")
-      .insert({
-        promoter_id: promoter.id, venue_id: venueId, headliner: `Journey Pay ${RUN}`, city: "London", date: iso(50), doors_time: "19:00",
-        set_time: "20:00", performance_length_mins: 30, expected_attendance: 100, support_fee: 100, booking_fee: 10, application_deadline: iso(30), genres: ["Indie"],
-      })
-      .select("id")
-      .single();
-    slotIds.push(s2.id);
-    const { data: ap } = await artistC.client.from("applications").select("id").eq("slot_id", s2.id);
-    const { data: app2 } = await artistB.client.from("applications").insert({ slot_id: s2.id, artist_id: artistB.id }).select("id").single();
-    await promoter.client.rpc("make_offer", { p_application_id: app2.id });
-    await artistB.client.rpc("respond_to_offer", { p_application_id: app2.id, p_accept: true });
-    void ap;
-    const { data: bk } = await admin.from("bookings").select("id, total_pence").eq("application_id", app2.id).single();
-    const pi = `pi_journey_${RUN}`;
-    await admin.rpc("attach_payment_intent", { p_booking_id: bk.id, p_payment_intent_id: pi });
-    const args = { p_event_id: `evt_j_${RUN}`, p_occurred: new Date().toISOString(), p_payment_intent_id: pi, p_booking_id: bk.id, p_amount_pence: bk.total_pence, p_charge_id: `ch_j_${RUN}`, p_receipt_url: null };
-    const wrong = await admin.rpc("apply_payment_succeeded", { ...args, p_event_id: `evt_bad_${RUN}`, p_amount_pence: bk.total_pence - 1 });
-    check("A payment for the wrong amount is refused", !!wrong.error, errText(wrong.error));
-    const first = await admin.rpc("apply_payment_succeeded", args);
-    const second = await admin.rpc("apply_payment_succeeded", args);
-    const { data: after } = await admin.from("bookings").select("payment_status").eq("id", bk.id).single();
-    check("A matching payment marks the booking paid", !first.error && after?.payment_status === "paid", errText(first.error));
-    check("Replaying the same payment event is harmless", !second.error && after?.payment_status === "paid", errText(second.error));
-    const { data: events } = await admin.from("payment_events").select("id").eq("booking_id", bk.id).eq("kind", "payment_succeeded");
-    check("...and records exactly one payment_succeeded event", events?.length === 1, `${events?.length ?? 0}`);
-  }
 }
 
 async function cleanup() {
   try {
     if (slotIds.length) {
-      await admin.from("payment_events").delete().in("booking_id", (await admin.from("bookings").select("id").in("slot_id", slotIds)).data?.map((r) => r.id) ?? []);
       await admin.from("bookings").delete().in("slot_id", slotIds);
     }
     for (const id of userIds) await admin.auth.admin.deleteUser(id);

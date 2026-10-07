@@ -1,16 +1,10 @@
 // Builds the Content-Security-Policy header value. Lives here (not inline
 // in next.config.ts) so it's one place to update.
 //
-// Verified against what this app actually loads: Stripe.js (loadStripe in
-// src/lib/stripe/client.ts) and the Payment Element it mounts in
-// BookModal.tsx, plus the Supabase project itself (auth + REST/Storage).
-// No analytics/tracking script, no other third-party embed exists in the
-// codebase today — confirmed by grep, not assumed. The Stripe domains below
-// are Stripe's own long-standing, documented CSP requirements for
-// Stripe.js/Elements (js.stripe.com, api.stripe.com, hooks.stripe.com,
-// m.stripe.network) — re-check
-// https://docs.stripe.com/security/guide#content-security-policy before
-// launch in case Stripe has since added a domain.
+// Verified against what this app actually loads: the Supabase project itself
+// (auth + REST + realtime websocket) and the placeholder venue photos. No
+// payment provider, analytics/tracking script or other third-party embed
+// exists in the codebase — confirmed by grep, not assumed.
 //
 // script-src includes 'unsafe-inline' — not the ideal answer, but the
 // evidence-based one. A per-request nonce (Next.js's own documented
@@ -33,15 +27,15 @@ export function buildCsp() {
 
   return [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://js.stripe.com",
+    "script-src 'self' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline'",
     // picsum.photos (and the fastly host it redirects to) serves the placeholder
     // venue photos seeded in 0003_seed_venues.sql. Images only, never script.
     // Remove both once venue photography is hosted in Supabase Storage.
     `img-src 'self' data: blob: https://picsum.photos https://fastly.picsum.photos${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
     "font-src 'self'",
-    `connect-src 'self' https://api.stripe.com https://m.stripe.network${supabaseOrigin ? ` ${supabaseOrigin} ${supabaseWs}` : ""}`,
-    "frame-src https://js.stripe.com https://hooks.stripe.com",
+    `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin} ${supabaseWs}` : ""}`,
+    "frame-src 'none'",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

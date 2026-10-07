@@ -10,10 +10,10 @@ import ReasonModal from "@/components/bookings/ReasonModal";
 import { cn } from "@/lib/utils";
 
 // Staff console. The proxy only lets staff reach /admin, and every function
-// below re-checks the caller's role in SQL (moderators can't read payments).
+// below re-checks the caller's role in SQL (moderators can't read the bookings list).
 // Every action is written to the audit log by the database function itself.
 
-type Tab = "reports" | "support" | "users" | "listings" | "payments" | "audit";
+type Tab = "reports" | "support" | "users" | "listings" | "bookings" | "audit";
 type Row = Record<string, unknown>;
 
 const when = (v: unknown) => (typeof v === "string" ? new Date(v).toLocaleString("en-GB", { timeZone: "Europe/London" }) : "");
@@ -211,7 +211,7 @@ function Listings() {
       <ReasonModal
         open={!!target}
         title="Remove this listing?"
-        body="Applicants are told it was cancelled and the promoter is told why. A confirmed booking is cancelled and flagged for a refund decision if it was paid."
+        body="Applicants are told it was cancelled and the promoter is told why. A confirmed booking is cancelled."
         confirmLabel="Remove listing"
         requireReason
         busy={busy}
@@ -230,19 +230,19 @@ function Listings() {
   );
 }
 
-function Payments() {
+function Bookings() {
   const { rows, error } = useRpc("admin_recent_bookings", { p_limit: 100 });
   return (
     <div className="space-y-3">
       <p className="text-sm text-paper-dim max-w-[70ch]">
-        Admin only. Refunds are issued in the Stripe Dashboard; the webhook records them here. Bookings flagged
-        &ldquo;refund review&rdquo; were cancelled after a payment and need a decision.
+        Admin only. The agreed terms of recent bookings. Support Slot doesn&rsquo;t handle payment, so there is no payment status
+        here.
       </p>
       <Err message={error} />
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="font-mono text-[10px] uppercase tracking-widest text-paper-dim">
-            <tr><th className="py-2 pr-4">Show</th><th className="pr-4">Artist</th><th className="pr-4">Status</th><th className="pr-4">Payment</th><th className="pr-4">Total</th><th className="pr-4">Refunded</th><th>Flags</th></tr>
+            <tr><th className="py-2 pr-4">Show</th><th className="pr-4">Artist</th><th className="pr-4">Status</th><th className="pr-4">Date</th><th className="pr-4">Fee</th><th>Travel</th></tr>
           </thead>
           <tbody>
             {rows?.map((b) => (
@@ -250,10 +250,9 @@ function Payments() {
                 <td className="py-2 pr-4">{str(b.headliner)}<span className="block text-xs text-paper-dim">{str(b.promoter_company)}</span></td>
                 <td className="pr-4">{str(b.artist_name)}</td>
                 <td className="pr-4">{str(b.status)}</td>
-                <td className="pr-4">{str(b.payment_status)}</td>
-                <td className="pr-4">{formatPence(Number(b.total_pence))}</td>
-                <td className="pr-4">{formatPence(Number(b.refunded_pence))}</td>
-                <td className="text-xs">{b.refund_review_required ? <span className="text-signal">refund review </span> : null}{b.dispute_status ? <span className="text-signal">dispute: {str(b.dispute_status)}</span> : null}</td>
+                <td className="pr-4">{str(b.event_date)}</td>
+                <td className="pr-4">{formatPence(Number(b.fee_pence))}</td>
+                <td>{formatPence(Number(b.travel_pence))}</td>
               </tr>
             ))}
           </tbody>
@@ -284,7 +283,7 @@ export default function AdminPage() {
   const { adminRole } = useStore();
   const [tab, setTab] = useState<Tab>("reports");
   const isAdmin = adminRole === "admin";
-  const tabs: Array<[Tab, string]> = [["reports", "Reports"], ["support", "Support"], ["users", "Users"], ["listings", "Listings"], ...(isAdmin ? ([["payments", "Payments"]] as Array<[Tab, string]>) : []), ["audit", "Audit log"]];
+  const tabs: Array<[Tab, string]> = [["reports", "Reports"], ["support", "Support"], ["users", "Users"], ["listings", "Listings"], ...(isAdmin ? ([["bookings", "Bookings"]] as Array<[Tab, string]>) : []), ["audit", "Audit log"]];
   const select = useCallback((t: Tab) => setTab(t), []);
   if (!adminRole) return null;
   return (
@@ -303,7 +302,7 @@ export default function AdminPage() {
         {tab === "support" && <Support />}
         {tab === "users" && <Users isAdmin={isAdmin} />}
         {tab === "listings" && <Listings />}
-        {tab === "payments" && isAdmin && <Payments />}
+        {tab === "bookings" && isAdmin && <Bookings />}
         {tab === "audit" && <Audit />}
       </div>
     </div>

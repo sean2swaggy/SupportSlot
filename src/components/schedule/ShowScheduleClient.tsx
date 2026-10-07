@@ -46,46 +46,12 @@ export default function ShowScheduleClient({
   slot,
   venue,
   promoterId,
-  isSupportPlus,
 }: {
   slot: SupportSlot;
   venue: Venue;
   promoterId: string;
-  isSupportPlus: boolean;
 }) {
-  if (!isSupportPlus) {
-    return <UpsellState slot={slot} />;
-  }
   return <ScheduleWorkspace slot={slot} venue={venue} promoterId={promoterId} />;
-}
-
-function UpsellState({ slot }: { slot: SupportSlot }) {
-  return (
-    <div className="mx-auto max-w-[700px] px-4 sm:px-6 lg:px-10 py-16 sm:py-24 text-center">
-      <Link
-        href={`/promoter/slot/${slot.id}/applicants`}
-        className="font-mono text-[11px] uppercase tracking-widest text-paper-dim hover:text-paper"
-      >
-        ← Back to {slot.headliner}
-      </Link>
-      <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-acid mt-8 mb-3">
-        Show Schedule
-      </p>
-      <h1 className="font-display uppercase text-4xl sm:text-5xl leading-[0.95] tracking-tight">
-        A Support+ planning tool
-      </h1>
-      <p className="mt-5 text-paper-dim">
-        Show Schedule is a private running order for your event — arrival, load-in, soundcheck,
-        doors, performances, changeovers and breaks, across one or more stages. It&rsquo;s only for
-        organising your own night; nothing here is ever visible to artists, and nothing you do here
-        sends a notification or changes a booking. Support+ also includes your Artist Roster and
-        Availability Requests.
-      </p>
-      <Button href="/support-plus" size="lg" className="mt-8">
-        See Support+
-      </Button>
-    </div>
-  );
 }
 
 function ScheduleWorkspace({ slot, venue, promoterId }: { slot: SupportSlot; venue: Venue; promoterId: string }) {
@@ -153,8 +119,8 @@ function ScheduleWorkspace({ slot, venue, promoterId }: { slot: SupportSlot; ven
       } else {
         setSaveState("error");
         setSaveError(
-          result.error === "support_plus_required"
-            ? "Your Support+ subscription is no longer active."
+          result.error === "promoter_required"
+            ? "Only the promoter who owns this listing can edit its schedule."
             : result.error
         );
       }

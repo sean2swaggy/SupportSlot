@@ -124,7 +124,7 @@ describe("B. promoter review", () => {
 });
 
 describe("C. offer -> accept -> confirmed booking", () => {
-  it("computes the agreed terms server-side, in pence, with the artist keeping their full fee", async () => {
+  it("records the agreed terms server-side, in pence (fee + travel only — no money is handled)", async () => {
     const artist = await makeArtist(db, { location: "Manchester" });
     const promoter = await makePromoter(db);
     const slot = await makeSlot(db, promoter, { supportFee: 150 }); // London slot, £150
@@ -136,10 +136,10 @@ describe("C. offer -> accept -> confirmed booking", () => {
     expect(b.fee_pence).toBe(15000);
     // Manchester -> London is 200 miles (>1h at 40mph): guaranteed £10 minimum travel.
     expect(b.travel_pence).toBe(1000);
-    expect(b.booking_fee_pence).toBe(1200);
-    // (15·17200 + 20000 + 984) / 985, rounded up to the penny.
-    expect(b.processing_fee_pence).toBe(283);
-    expect(b.total_pence).toBe(15000 + 1000 + 1200 + 283);
+    // No platform fee, processing line, total or payment state exists any more.
+    for (const gone of ["booking_fee_pence", "processing_fee_pence", "total_pence", "payment_status", "refund_review_required"]) {
+      expect(gone in b, gone).toBe(false);
+    }
     expect(b.artist_name).toBe("Test Artist");
     expect(b.venue_name).toBeTruthy();
     expect(await appStatus(app)).toBe("offered");
@@ -176,8 +176,8 @@ describe("C. offer -> accept -> confirmed booking", () => {
     expect(slotRow.rows[0].status).toBe("filled");
 
     // Both accounts read the same confirmed booking through RLS.
-    const a = await asUser(db, artist, (tx) => tx.query<{ status: string; total_pence: number }>(`select status, total_pence from public.bookings`));
-    const p = await asUser(db, promoter, (tx) => tx.query<{ status: string; total_pence: number }>(`select status, total_pence from public.bookings`));
+    const a = await asUser(db, artist, (tx) => tx.query<{ status: string; fee_pence: number }>(`select status, fee_pence from public.bookings`));
+    const p = await asUser(db, promoter, (tx) => tx.query<{ status: string; fee_pence: number }>(`select status, fee_pence from public.bookings`));
     expect(a.rows[0]).toEqual(p.rows[0]);
     expect(a.rows[0].status).toBe("confirmed");
     expect((await notifications(promoter, "offer_accepted")).length).toBe(1);
@@ -220,8 +220,8 @@ describe("C. offer -> accept -> confirmed booking", () => {
         tx.query(
           `insert into public.bookings (slot_id, artist_id, promoter_id, status, artist_name, promoter_company, headliner,
              venue_name, venue_address, venue_city, event_date, doors_time, set_time, set_length_mins,
-             fee_pence, travel_pence, booking_fee_pence, processing_fee_pence, total_pence, offer_expires_at)
-           values ($1, $2, $3, 'confirmed', 'x', 'y', 'z', 'v', 'a', 'London', '2099-12-01', '19:00', '20:00', 30, 1, 0, 0, 0, 1, now())`,
+             fee_pence, travel_pence, offer_expires_at)
+           values ($1, $2, $3, 'confirmed', 'x', 'y', 'z', 'v', 'a', 'London', '2099-12-01', '19:00', '20:00', 30, 1, 0, now())`,
           [slot, a2, promoter]
         )
       )
@@ -304,19 +304,9 @@ describe("D. cancellation, closing and rescheduling", () => {
     expect(await appStatus(app)).toBe("cancelled");
     const b = await booking(app, false);
     expect(b.status).toBe("cancelled");
-    expect(b.refund_review_required).toBe(false); // nothing had been paid
     const s = await db.query<{ status: string }>(`select status from public.slots where id = $1`, [slot]);
     expect(s.rows[0].status).toBe("open");
     expect((await notifications(promoter, "booking_cancelled")).length).toBe(1);
-  });
-
-  it("cancelling a PAID booking flags it for a human refund decision and promises nothing", async () => {
-    const { artist, app } = await confirmed();
-    await asService(db, (tx) =>
-      tx.query(`update public.bookings set payment_status = 'paid' where application_id = $1`, [app])
-    );
-    await call(artist, "cancel_booking", app, "can't play any more");
-    expect((await booking(app, false)).refund_review_required).toBe(true);
   });
 
   it("closing a listing declines pending applicants but is refused while a booking is confirmed", async () => {
@@ -364,8 +354,8 @@ describe("D. cancellation, closing and rescheduling", () => {
       asUser(db, promoter, (tx) =>
         tx.query(
           `insert into public.slots (promoter_id, venue_id, headliner, city, date, doors_time, set_time, performance_length_mins,
-             expected_attendance, support_fee, application_deadline, genres, booking_fee)
-           values ($1, (select id from public.venues limit 1), $2, 'London', $3, '19:00', '20:00', $4, 100, $5, $6, $7, 12)`,
+             expected_attendance, support_fee, application_deadline, genres)
+           values ($1, (select id from public.venues limit 1), $2, 'London', $3, '19:00', '20:00', $4, 100, $5, $6, $7)`,
           [promoter, over.headliner ?? "OK", over.date ?? "2099-12-01", over.mins ?? 30, over.fee ?? 100, over.deadline ?? "2099-11-01", over.genres ?? ["Indie"]]
         )
       );

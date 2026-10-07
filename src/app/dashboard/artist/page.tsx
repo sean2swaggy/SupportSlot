@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
@@ -16,7 +16,6 @@ import AvatarUploadField from "@/components/ui/AvatarUploadField";
 import ArtistLinksEditor from "@/components/artists/ArtistLinksEditor";
 import ArtistMonthlyListenersEditor from "@/components/artists/ArtistMonthlyListenersEditor";
 import EmailVerifyBanner from "@/components/account/EmailVerifyBanner";
-import PayoutPanel from "@/components/payouts/PayoutPanel";
 import { profileChecklist, profileCompletion } from "@/lib/profile";
 import type { SupportSlot } from "@/lib/types";
 
@@ -128,9 +127,6 @@ export default function ArtistDashboard() {
       </div>
 
       <div className="mt-10 space-y-6">
-        <Suspense fallback={null}>
-          <PayoutPanel />
-        </Suspense>
         <ArtistMonthlyListenersEditor artist={me} />
         <ArtistLinksEditor artist={me} />
       </div>

@@ -18,12 +18,12 @@ const POLICIES = [
     d: "A badge means our team has checked a promoter or artist. Not everyone has one yet, and the absence of a badge doesn't mean anything is wrong.",
   },
   {
-    t: "Clear payment information",
-    d: "Every offer shows its terms up front and they're fixed once it's made: the artist's full fee and travel, plus Support Slot's separate booking fee and card processing, which the promoter pays.",
+    t: "Clear terms",
+    d: "Every offer shows its terms up front and they're fixed once it's made: the fee and travel the promoter has agreed to pay. The promoter pays the artist directly — Support Slot doesn't take, hold or process payment.",
   },
   {
     t: "Cancellation policy",
-    d: "Either side can cancel a confirmed booking, giving a reason; the other side is told straight away. If a payment had been made, our team reviews it — a refund isn't automatic. Repeated late cancellations may lead us to act on an account.",
+    d: "Either side can cancel a confirmed booking, giving a reason; the other side is told straight away. Repeated late cancellations may lead us to act on an account.",
   },
 ];
 
@@ -54,7 +54,7 @@ export default function TrustPage() {
       <div className="mt-16 border border-ink-border bg-ink-raised p-6 sm:p-8">
         <p className="font-display text-2xl">See something wrong?</p>
         <p className="mt-2 text-sm text-paper-dim max-w-[54ch]">
-          Report a listing that requests payment, misrepresents a show, or breaks any of the
+          Report a listing that asks an artist to pay, misrepresents a show, or breaks any of the
           policies above. Artists can also block a promoter from a conversation.
         </p>
         <div className="mt-5">

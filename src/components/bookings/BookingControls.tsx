@@ -17,8 +17,6 @@ import type { Result } from "@/lib/result";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import BookingTerms from "./BookingTerms";
-import PaymentBadge from "./PaymentBadge";
-import PayBookingModal from "./PayBookingModal";
 import ReasonModal from "./ReasonModal";
 import type { Application, Booking } from "@/lib/types";
 
@@ -131,23 +129,12 @@ export function ArtistApplicationControls({ application, booking }: { applicatio
 
       {s === "confirmed" && booking && (
         <div className="border border-ok/50 bg-ok/5 p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="font-mono text-[10px] uppercase tracking-widest text-ok">Booking confirmed</p>
-            <PaymentBadge booking={booking} />
-          </div>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-ok">Booking confirmed</p>
           <div className="mt-3">
             <BookingTerms booking={booking} viewer="artist" />
           </div>
           <p className="mt-3 text-xs text-paper-dim">
-            {booking.paymentStatus === "paid" || booking.paymentStatus === "partially_refunded"
-              ? "The promoter has paid. Stripe sends your share to your bank on its own payout schedule — see Payments on your dashboard."
-              : booking.paymentStatus === "processing"
-                ? "The promoter's payment is being processed by their bank."
-                : booking.paymentStatus === "disputed"
-                  ? "The card payment is being disputed. We'll keep you updated."
-                  : booking.paymentStatus === "refunded"
-                    ? "This payment was refunded."
-                    : "The promoter hasn't paid yet. You'll be notified when they do."}
+            Agree how and when you&rsquo;re paid with the promoter — message them from here. Support Slot doesn&rsquo;t take or hold payment.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <MessageLink applicationId={application.id} />
@@ -177,7 +164,7 @@ export function ArtistApplicationControls({ application, booking }: { applicatio
 
       {s === "cancelled" && booking?.cancelReason && (
         <p className="text-xs text-paper-dim">
-          Cancelled{booking.refundReviewRequired ? " — a payment had been made and our team is reviewing it" : ""}. Reason: {booking.cancelReason}
+          Cancelled. Reason: {booking.cancelReason}
         </p>
       )}
       {s === "declined" && application.closedReason === "slot_filled" && (
@@ -215,7 +202,7 @@ export function ArtistApplicationControls({ application, booking }: { applicatio
       <ReasonModal
         open={modal === "cancel"}
         title="Cancel this booking?"
-        body="The promoter is told straight away and the slot goes back on the market. If they had already paid, our team reviews the refund."
+        body="The promoter is told straight away and the slot goes back on the market."
         confirmLabel="Cancel booking"
         requireReason
         busy={act.busy}
@@ -241,11 +228,9 @@ export function PromoterApplicantControls({
   /** False once the slot is filled / closed / cancelled — no new offers. */
   slotOpen: boolean;
 }) {
-  const { refreshApplications } = useStore();
   const act = useAction();
   const [modal, setModal] = useState<"offer" | "decline" | "withdraw" | "cancel" | null>(null);
   const [offerMessage, setOfferMessage] = useState("");
-  const [paying, setPaying] = useState(false);
   const s = application.status;
   const close = () => {
     setModal(null);
@@ -256,21 +241,16 @@ export function PromoterApplicantControls({
     <div className="space-y-3 w-full">
       {s === "offered" && booking && (
         <div className="border border-acid/60 bg-acid/5 p-3 text-sm">
-          Offer sent — {booking.artistName} has until {expiryText(booking.offerExpiresAt)} to respond. Nothing is charged until
+          Offer sent — {booking.artistName} has until {expiryText(booking.offerExpiresAt)} to respond. Nothing is confirmed until
           they accept.
         </div>
       )}
       {s === "confirmed" && booking && (
         <div className="border border-ok/50 bg-ok/5 p-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="font-mono text-[10px] uppercase tracking-widest text-ok">Confirmed by {booking.artistName}</p>
-            <PaymentBadge booking={booking} />
-          </div>
-          {booking.paymentStatus === "paid" && booking.receiptUrl && (
-            <a href={booking.receiptUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-xs underline">
-              View Stripe receipt
-            </a>
-          )}
+          <p className="font-mono text-[10px] uppercase tracking-widest text-ok">Confirmed by {booking.artistName}</p>
+          <p className="mt-2 text-xs text-paper-dim">
+            Agree payment with the artist directly — Support Slot doesn&rsquo;t take or hold payment.
+          </p>
         </div>
       )}
       {s === "cancelled" && booking?.cancelReason && (
@@ -306,16 +286,6 @@ export function PromoterApplicantControls({
             Withdraw offer
           </Button>
         )}
-        {s === "confirmed" && booking && (booking.paymentStatus === "unpaid" || booking.paymentStatus === "failed") && (
-          <Button size="sm" onClick={() => setPaying(true)}>
-            Pay {booking.artistName}
-          </Button>
-        )}
-        {s === "confirmed" && booking && booking.paymentStatus === "processing" && (
-          <Button size="sm" variant="outline" onClick={() => setPaying(true)}>
-            Check payment
-          </Button>
-        )}
         {s === "confirmed" && (
           <button
             type="button"
@@ -334,7 +304,7 @@ export function PromoterApplicantControls({
           <h2 id="offer-title" className="font-display text-2xl">Make an offer</h2>
           <p className="mt-2 text-sm text-paper-dim">
             The terms come from your listing — fee, travel, date and times — and are locked in when you send this. The artist
-            then accepts or declines; only an accepted offer becomes a booking, and you pay after that.
+            then accepts or declines; only an accepted offer becomes a booking, and you then settle payment with them directly.
           </p>
           <label htmlFor="offer-msg" className="mt-4 block font-mono text-[10px] uppercase tracking-widest text-paper-dim mb-2">
             Message (optional)
@@ -388,11 +358,7 @@ export function PromoterApplicantControls({
       <ReasonModal
         open={modal === "cancel"}
         title="Cancel this booking?"
-        body={
-          booking && booking.paymentStatus !== "unpaid"
-            ? "You've already paid. Cancelling flags the payment for our team to review — a refund isn't automatic."
-            : "The artist is told straight away and the slot goes back on the market."
-        }
+        body="The artist is told straight away and the slot goes back on the market."
         confirmLabel="Cancel booking"
         requireReason
         busy={act.busy}
@@ -403,9 +369,6 @@ export function PromoterApplicantControls({
         }}
       />
 
-      {booking && paying && (
-        <PayBookingModal open={paying} booking={booking} onClose={() => setPaying(false)} onChanged={refreshApplications} />
-      )}
     </div>
   );
 }

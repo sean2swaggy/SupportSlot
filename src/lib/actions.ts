@@ -210,7 +210,6 @@ export interface ListingPatch {
   expectedAttendance: number;
   supportFee: number;
   travelContribution: number;
-  bookingFee: number;
   requirements: string[];
   applicationDeadline: string;
   isUrgent: boolean;
@@ -241,7 +240,6 @@ export async function updateListing(supabase: SupabaseClient, slotId: string, p:
       expected_attendance: p.expectedAttendance,
       support_fee: p.supportFee,
       travel_contribution: p.travelContribution,
-      booking_fee: p.bookingFee,
       requirements: p.requirements,
       application_deadline: p.applicationDeadline,
       is_urgent: p.isUrgent,

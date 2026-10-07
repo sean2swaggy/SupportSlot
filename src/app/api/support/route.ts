@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { clientIp, json, limited } from "@/lib/server/request";
 
-const TOPICS = ["account", "payment", "booking", "bug", "other"];
+const TOPICS = ["account", "booking", "bug", "other"];
 
 // Support requests from signed-in AND signed-out visitors (someone locked out
 // of their account can't be asked to log in first). Rate-limited per address

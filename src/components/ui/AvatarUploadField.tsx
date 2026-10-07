@@ -9,7 +9,7 @@ const MAX_SOURCE_BYTES = 15 * 1024 * 1024; // 15MB sanity cap
 
 // Neutral placeholder shown before any photo is uploaded and no fallbackSrc
 // is supplied — a plain silhouette, not tied to any mock account. Exported
-// so other avatar displays (Navbar, PayoutPanel, etc.) can share it.
+// so other avatar displays (Navbar, dashboards, etc.) can share it.
 export const DEFAULT_FALLBACK =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' fill='%23222220'/%3E%3Ccircle cx='48' cy='38' r='18' fill='%233a3a37'/%3E%3Cellipse cx='48' cy='88' rx='32' ry='24' fill='%233a3a37'/%3E%3C/svg%3E";
 

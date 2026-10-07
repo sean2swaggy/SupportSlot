@@ -101,15 +101,6 @@ interface StoreShape {
   unreadMessageCount: number;
   lastMinuteAlertsEnabled: boolean;
   setLastMinuteAlertsEnabled: (v: boolean) => Promise<Result<void>>;
-  // Promoter-only. Server-verified — see 0010_promoter_support_plus.sql;
-  // there is no client setter for either of these two.
-  isSupportPlus: boolean;
-  supportPlusBillingPeriod: "monthly" | "annual";
-  supportPlusStatus: string | null;
-  supportPlusPeriodEnd: string | null;
-  supportPlusCancelAtPeriodEnd: boolean;
-  startSupportPlusCheckout: (period: "monthly" | "annual") => Promise<void>;
-  openBillingPortal: () => Promise<void>;
   artistAvatar: string | null;
   setArtistAvatar: (v: string | null) => Promise<Result<void>>;
   promoterAvatar: string | null;
@@ -149,10 +140,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRoleState] = useState<Role>("artist");
   const [hasOnboarded, setHasOnboarded] = useState(false);
-  const [isSupportPlus, setIsSupportPlusState] = useState(false);
-  const [supportPlusBillingPeriod, setSupportPlusBillingPeriodState] = useState<"monthly" | "annual">(
-    "monthly"
-  );
   const [currentArtist, setCurrentArtist] = useState<Artist | null>(null);
   const [currentPromoter, setCurrentPromoter] = useState<Promoter | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
@@ -163,9 +150,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [emailNotifications, setEmailNotificationsState] = useState(true);
   const [suspended, setSuspended] = useState(false);
   const [adminRole, setAdminRole] = useState<"moderator" | "admin" | null>(null);
-  const [supportPlusStatus, setSupportPlusStatus] = useState<string | null>(null);
-  const [supportPlusPeriodEnd, setSupportPlusPeriodEnd] = useState<string | null>(null);
-  const [supportPlusCancelAtPeriodEnd, setSupportPlusCancelAtPeriodEnd] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   const [emailVerified, setEmailVerified] = useState(false);
@@ -186,7 +170,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const { data: profile } = await supabase
         .from("profiles")
         .select(
-          "role, has_onboarded, is_support_plus, support_plus_billing_period, support_plus_status, support_plus_current_period_end, support_plus_cancel_at_period_end, email_notifications, suspended_at, admin_role"
+          "role, has_onboarded, email_notifications, suspended_at, admin_role"
         )
         .eq("id", authUser.id)
         .maybeSingle();
@@ -194,13 +178,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const resolvedRole = (profile?.role as Role | undefined) ?? "artist";
       setRoleState(resolvedRole);
       setHasOnboarded(profile?.has_onboarded ?? false);
-      setIsSupportPlusState(profile?.is_support_plus ?? false);
-      setSupportPlusBillingPeriodState(
-        (profile?.support_plus_billing_period as "monthly" | "annual" | null) ?? "monthly"
-      );
-      setSupportPlusStatus((profile?.support_plus_status as string | null) ?? null);
-      setSupportPlusPeriodEnd((profile?.support_plus_current_period_end as string | null) ?? null);
-      setSupportPlusCancelAtPeriodEnd(!!profile?.support_plus_cancel_at_period_end);
       setEmailNotificationsState(profile?.email_notifications ?? true);
       setSuspended(!!profile?.suspended_at);
       setAdminRole((profile?.admin_role as "moderator" | "admin" | null) ?? null);
@@ -448,33 +425,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [supabase, user, currentArtist]
   );
 
-  // Support+ is a promoter-only subscription now, and — critically —
-  // is_support_plus is no longer something a client can just write (see
-  // 0010_promoter_support_plus.sql's trigger). These two call real Stripe
-  // endpoints and redirect; the flag itself only ever changes via the
-  // checkout return route or the subscription webhook, both using the
-  // service-role key.
-  const startSupportPlusCheckout: StoreShape["startSupportPlusCheckout"] = useCallback(
-    async (period) => {
-      const res = await fetch("/api/stripe/subscriptions/create-checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ period }),
-      });
-      const body = await res.json();
-      if (!res.ok || !body.url) throw new Error(body.error ?? "Couldn't start checkout.");
-      window.location.href = body.url;
-    },
-    []
-  );
-
-  const openBillingPortal: StoreShape["openBillingPortal"] = useCallback(async () => {
-    const res = await fetch("/api/stripe/subscriptions/portal", { method: "POST" });
-    const body = await res.json();
-    if (!res.ok || !body.url) throw new Error(body.error ?? "Couldn't open billing portal.");
-    window.location.href = body.url;
-  }, []);
-
   const setArtistAvatar: StoreShape["setArtistAvatar"] = useCallback(
     async (v) => {
       if (!user || !currentArtist) return fail("not_authenticated");
@@ -564,7 +514,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           expected_attendance: slot.expectedAttendance,
           support_fee: slot.supportFee,
           travel_contribution: slot.travelContribution,
-          booking_fee: slot.bookingFee,
           requirements: slot.requirements,
           application_deadline: slot.applicationDeadline,
           is_urgent: slot.isUrgent,
@@ -708,13 +657,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       unreadMessageCount,
       lastMinuteAlertsEnabled: currentArtist?.lastMinuteAlerts ?? false,
       setLastMinuteAlertsEnabled,
-      isSupportPlus,
-      supportPlusBillingPeriod,
-      supportPlusStatus,
-      supportPlusPeriodEnd,
-      supportPlusCancelAtPeriodEnd,
-      startSupportPlusCheckout,
-      openBillingPortal,
       artistAvatar: currentArtist?.image || null,
       setArtistAvatar,
       promoterAvatar: currentPromoter?.avatar || null,
@@ -759,13 +701,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshThreads,
       unreadMessageCount,
       setLastMinuteAlertsEnabled,
-      isSupportPlus,
-      supportPlusBillingPeriod,
-      supportPlusStatus,
-      supportPlusPeriodEnd,
-      supportPlusCancelAtPeriodEnd,
-      startSupportPlusCheckout,
-      openBillingPortal,
       setArtistAvatar,
       setPromoterAvatar,
       setArtistLinks,

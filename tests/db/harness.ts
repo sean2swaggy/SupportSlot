@@ -6,8 +6,8 @@ import path from "node:path";
 // Supabase stubbed — the auth.* helpers, the anon/authenticated/service_role
 // roles and storage tables — to apply this project's REAL migrations
 // unmodified and exercise row-level security, triggers and SQL functions
-// exactly as Postgres would. It does not simulate PostgREST, GoTrue or
-// Stripe; anything crossing those boundaries is covered elsewhere (see
+// exactly as Postgres would. It does not simulate PostgREST or GoTrue;
+// anything crossing those boundaries is covered elsewhere (see
 // scripts/security-regression.mjs for the live Supabase checks).
 
 const MIGRATIONS_DIR = path.resolve(__dirname, "../../supabase/migrations");

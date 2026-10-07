@@ -20,7 +20,7 @@ import { isRequestExpired } from "@/lib/availability";
 import type { AvailabilityRequestWithRecipients, RosterEntry, SupportSlot } from "@/lib/types";
 
 export default function PromoterRequestsPage() {
-  const { currentPromoterId, isSupportPlus } = useStore();
+  const { currentPromoterId } = useStore();
   const [requests, setRequests] = useState<AvailabilityRequestWithRecipients[]>([]);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [mySlots, setMySlots] = useState<SupportSlot[]>([]);
@@ -56,7 +56,7 @@ export default function PromoterRequestsPage() {
       <div className="mt-4 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-acid mb-2">
-            Support+
+            Private
           </p>
           <h1 className="font-display uppercase text-3xl sm:text-5xl leading-none">
             Availability requests
@@ -64,18 +64,12 @@ export default function PromoterRequestsPage() {
           <p className="mt-3 max-w-[62ch] text-paper-dim">
             Ask roster artists if they&rsquo;re free before you commit to a booking. An
             &ldquo;available&rdquo; reply is guidance, not a reservation — you still invite them to apply,
-            make an offer and pay through the normal flow.
+            make an offer through the normal flow.
           </p>
         </div>
-        {isSupportPlus ? (
-          <Button onClick={() => setComposerOpen(true)} size="md">
-            New request
-          </Button>
-        ) : (
-          <Button href="/support-plus" size="md" variant="outline">
-            Resubscribe to send new requests
-          </Button>
-        )}
+        <Button onClick={() => setComposerOpen(true)} size="md">
+          New request
+        </Button>
       </div>
 
       <div className="mt-10 space-y-5">

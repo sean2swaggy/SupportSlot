@@ -39,15 +39,6 @@ export type ApplicationStatus =
 
 export type BookingStatus = "offered" | "confirmed" | "declined" | "withdrawn" | "cancelled";
 
-export type PaymentStatus =
-  | "unpaid"
-  | "processing"
-  | "paid"
-  | "failed"
-  | "partially_refunded"
-  | "refunded"
-  | "disputed";
-
 export interface Track {
   id: string;
   title: string;
@@ -91,9 +82,6 @@ export interface Artist {
   verification: VerificationLevel;
   artistSize: "emerging" | "developing" | "established";
   lastMinuteAlerts: boolean;
-  // Whether this artist's Stripe Connect account can currently receive
-  // transfers — false until they complete Stripe's hosted onboarding.
-  stripeTransfersActive: boolean;
   memberSince: string;
 }
 
@@ -138,9 +126,6 @@ export interface SupportSlot {
   expectedAttendance: number;
   supportFee: number;
   travelContribution: number;
-  // Support Slot's own cut, set by the promoter when posting (£10 minimum
-  // enforced by the DB) — separate from supportFee, which goes to the artist.
-  bookingFee: number;
   requirements: string[];
   applicationDeadline: string; // ISO date
   applicantCount: number;
@@ -189,9 +174,6 @@ export interface Booking {
   requirements: string[];
   feePence: number;
   travelPence: number;
-  bookingFeePence: number;
-  processingFeePence: number;
-  totalPence: number;
   offerMessage?: string;
   offeredAt: string;
   offerExpiresAt: string;
@@ -199,19 +181,6 @@ export interface Booking {
   cancelledAt?: string;
   cancelReason?: string;
   declineReason?: string;
-  refundReviewRequired: boolean;
-  paymentStatus: PaymentStatus;
-  receiptUrl?: string;
-  paidAt?: string;
-  refundedPence: number;
-  disputeStatus?: "open" | "won" | "lost";
-}
-
-export interface PaymentEvent {
-  id: string;
-  kind: string;
-  amountPence: number | null;
-  occurredAt: string;
 }
 
 export interface NotificationItem {
@@ -219,7 +188,6 @@ export interface NotificationItem {
   type:
     | "viewed"
     | "shortlisted"
-    | "match"
     | "urgent"
     | "booked"
     | "message"
@@ -232,11 +200,6 @@ export interface NotificationItem {
     | "application_withdrawn"
     | "booking_cancelled"
     | "listing_changed"
-    | "payment_received"
-    | "payment_failed"
-    | "refund"
-    | "dispute"
-    | "subscription"
     | "report_update"
     | "system";
   text: string;
@@ -247,7 +210,7 @@ export interface NotificationItem {
 
 export type Currency = "GBP" | "EUR" | "USD";
 
-// A promoter's private, saved artist — Support+ only. Never visible to the
+// A promoter's private, saved artist. Never visible to the
 // artist, never affects their ranking, match score or eligibility for
 // anything. See src/app/dashboard/promoter/roster.
 export interface RosterEntry {
@@ -349,7 +312,7 @@ export type GigInvitationStatus = "pending" | "accepted" | "declined" | "withdra
 
 // A promoter inviting one artist to apply for one of their own open gigs —
 // direct from Discover Artists, free for every promoter (unlike
-// AvailabilityRequest, which is Support+ only and roster-scoped). Accepting
+// AvailabilityRequest, which is roster-scoped). Accepting
 // creates a real Application; this never books anything by itself.
 export interface GigInvitation {
   id: string;
@@ -403,7 +366,7 @@ export interface ScheduleEntry {
   sortOrder: number;
 }
 
-// One event's (slot's) private running order — Support+ only, promoter-owned,
+// One event's (slot's) private running order — promoter-owned,
 // never artist-facing. `version` backs optimistic-concurrency saves (see
 // claim_schedule_version() in the migration) — the client must hold the
 // version it last read and re-fetch on a "stale_schedule_version" conflict

@@ -9,7 +9,7 @@ export default function TermsPage() {
       <h1 className="font-display uppercase text-4xl sm:text-5xl leading-[0.95] tracking-tight">
         Terms of Service
       </h1>
-      <p className="mt-4 text-sm text-paper-dim">Last updated: 3 October 2026</p>
+      <p className="mt-4 text-sm text-paper-dim">Last updated: 7 October 2026</p>
 
       <div className="mt-10 space-y-10 text-paper-dim [&_h2]:font-display [&_h2]:text-2xl [&_h2]:text-paper [&_h2]:mb-3 [&_p]:leading-relaxed [&_p+p]:mt-3 [&_li]:leading-relaxed [&_ul]:mt-3 [&_ul]:space-y-2 [&_ul]:list-disc [&_ul]:pl-5">
         <section>
@@ -28,8 +28,8 @@ export default function TermsPage() {
           <h2>2. What Support Slot is</h2>
           <p>
             Support Slot is a marketplace that connects artists with promoters and venues posting
-            support-slot (opening act) opportunities. We provide the platform, listing discovery, and
-            payment facilitation — we&rsquo;re not a party to the performance itself, and
+            support-slot (opening act) opportunities. We provide the platform and listing discovery — we&rsquo;re
+            not a party to the performance or to any payment, and
             we&rsquo;re not a talent agency, promoter, or venue.
           </p>
         </section>
@@ -77,16 +77,15 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2>6. Payments &amp; fees</h2>
+          <h2>6. Payment</h2>
           <p>
-            Payments are processed by Stripe. When a promoter books an artist, they pay the
-            artist&rsquo;s agreed fee, any travel contribution, and a separate Support Slot
-            booking fee — the booking fee is always paid by the promoter, never deducted from the
-            artist&rsquo;s fee. When a promoter pays, Stripe transfers the artist&rsquo;s share to the
-            artist&rsquo;s own connected Stripe account and later pays it to their bank on
-            Stripe&rsquo;s schedule. Support Slot isn&rsquo;t a bank or an escrow service and
-            doesn&rsquo;t hold funds in a separate account for a booking. Refunds and disputes are
-            reviewed by our team and handled through Stripe.
+            Support Slot doesn&rsquo;t take, hold or process payments, and isn&rsquo;t a bank or an
+            escrow service. An offer records the fee and travel contribution the promoter has agreed
+            to pay; once the artist accepts, the promoter is responsible for paying the artist
+            directly, as agreed between them. Support Slot never takes a cut of an artist&rsquo;s
+            fee and artists never pay to apply or perform. Any disagreement about payment is between
+            the artist and the promoter, but you can report it to us and we may act on an account
+            that breaks these terms.
           </p>
           <p>
             You&rsquo;re responsible for any taxes arising from fees you receive through the
@@ -98,8 +97,7 @@ export default function TermsPage() {
           <h2>7. Cancellations &amp; rescheduling</h2>
           <p>
             Either party can cancel a confirmed booking through the platform, giving a reason; the
-            other party is told straight away. If a payment had already been made, our team reviews
-            what happens to it — a refund is not automatic. Only the promoter can change the date or
+            other party is told straight away. Only the promoter can change the date or
             times of a show; if they do, the artist is told and can cancel. Repeated late
             cancellations may lead us to act on an account.
           </p>
@@ -112,7 +110,7 @@ export default function TermsPage() {
             <li>Request or offer payment for a support slot (see §4)</li>
             <li>Post false, misleading, or impersonating information</li>
             <li>Harass, threaten, or discriminate against another user</li>
-            <li>Attempt to circumvent the platform&rsquo;s payment system</li>
+            <li>Misrepresent the fee or terms of an offer</li>
             <li>Use the platform for any unlawful purpose</li>
           </ul>
           <p>

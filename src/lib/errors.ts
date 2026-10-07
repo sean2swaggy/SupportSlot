@@ -21,7 +21,7 @@ const MESSAGES: Array<[RegExp, string]> = [
   [/rate_limited/, "You're doing that too quickly. Please wait a moment and try again."],
   [/duplicate key|already exists|unique constraint/i, "You've already done that."],
   [/row-level security/, "You don't have permission to do that."],
-  [/deletion_blocked/, "This account can't be deleted yet — there's an upcoming booking or an unresolved payment."],
+  [/deletion_blocked/, "This account can't be deleted yet — there's an upcoming confirmed booking. Cancel it first."],
 ];
 
 // Codes whose message already carries a human sentence after the colon

@@ -1,15 +1,18 @@
 # Support Slot
 
 **Find your next stage.** A UK marketplace where independent artists find and
-apply for support (opening-act) slots, and promoters post listings, choose an
-act, and pay them through Stripe.
+apply for support (opening-act) slots, and promoters post listings and choose
+an act.
 
 Stack: Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 ·
-Supabase (Auth + Postgres + RLS) · Stripe (PaymentIntents, Connect, Billing).
+Supabase (Auth + Postgres + row-level security).
 
-See `CLAUDE.md` for the architecture rules and `docs/COMPLETION_REPORT.md` for
-what is implemented, what has been verified, and what is still to do before
-going live.
+**Support Slot handles no money.** An offer records the fee and travel the
+promoter and artist agreed; once the artist accepts, the promoter pays them
+directly. There is no payment provider, booking fee, payout or subscription.
+Artists never pay to apply or perform.
+
+See `CLAUDE.md` for the architecture rules.
 
 ---
 
@@ -17,7 +20,7 @@ going live.
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in the values below
+cp .env.example .env.local   # fill in the Supabase values below
 npm run dev                  # http://localhost:3000
 ```
 
@@ -27,7 +30,9 @@ npm run dev                  # http://localhost:3000
 | `npx tsc --noEmit` | Type check. |
 | `npm run lint` | ESLint. |
 | `npm run build` | Production build (must be clean). |
-| `node scripts/security-regression.mjs` | Live negative tests against the Supabase project in `.env.local` (needs migrations applied; creates and deletes synthetic users; Stripe stays in test mode). |
+| `node scripts/seed-dev-fixtures.mjs` | Fictional demo accounts and data for a **test** project (see §3). |
+| `node scripts/live-journey.mjs` | Live end-to-end + concurrency check against the project in `.env.local` (synthetic users, cleaned up). |
+| `node scripts/security-regression.mjs` | Live negative tests against the same project. |
 
 ### Environment variables (names only — never commit values)
 
@@ -35,21 +40,23 @@ npm run dev                  # http://localhost:3000
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | browser + server | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | browser + server | Public anon key (RLS applies) |
-| `SUPABASE_SERVICE_ROLE_KEY` | **server only** | Webhooks, payments, cron, account deletion, support inbox |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | browser | Stripe.js |
-| `STRIPE_SECRET_KEY` | **server only** | Stripe API (use a `sk_test_…` key until launch) |
-| `STRIPE_WEBHOOK_SECRET` | **server only** | Verifies webhook signatures |
-| `NEXT_PUBLIC_SITE_URL` | server | Canonical origin for Stripe return URLs and emails |
+| `SUPABASE_SERVICE_ROLE_KEY` | **server only** | Account deletion, support inbox, rate limiter, cron, fixtures |
+| `NEXT_PUBLIC_SITE_URL` | server | Canonical origin used in emails |
 | `CRON_SECRET` | **server only** | Bearer token the scheduler sends to `/api/cron/*` |
-| `RESEND_API_KEY`, `EMAIL_FROM` | **server only** | Optional. Without them the email outbox stays `pending`/`skipped` and nothing claims to have been sent. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | **server only** | Optional. Without them the email outbox stays `pending` and nothing claims to have been sent. |
 
 ## 2. Database
 
-Migrations live in `supabase/migrations/` and are applied **in order** in the
-Supabase SQL editor (there is no CLI in this setup): `0001` … `0023`.
-`0020`–`0023` are the marketplace core (offer/booking state machine, payments
-and billing, staff tools, privacy). Each file is safe to run once; if one
-fails nothing in that file is applied (fix and re-run it).
+The whole schema is **one file**: `supabase/migrations/0001_initial_schema.sql`.
+
+1. Create a new (free) Supabase project — use a separate one for testing.
+2. Dashboard → SQL Editor → paste the file → Run. It is meant for an empty
+   project and is applied as one transaction: if anything fails, nothing is
+   applied (fix the error and run it again).
+3. Copy the project URL and the anon and service-role keys into `.env.local`.
+
+The tests apply this same file to an in-process Postgres (PGlite), so what you
+paste is exactly what is tested.
 
 Create the first staff member by hand (there is deliberately no in-app way):
 
@@ -57,25 +64,25 @@ Create the first staff member by hand (there is deliberately no in-app way):
 update public.profiles set admin_role = 'admin' where email = 'you@example.com';
 ```
 
-`moderator` can handle reports/support/listings/users; only `admin` sees
-payments and can set verification.
+`moderator` can handle reports, support requests, listings and users; only
+`admin` sees the bookings list and can set verification.
 
-## 3. Stripe
+Future changes go in new numbered files (`0002_…sql`), never by editing the
+first one once it has been applied to a real project.
 
-* **Webhook endpoint:** `https://<site>/api/stripe/webhooks` with events
-  `payment_intent.processing`, `payment_intent.succeeded`,
-  `payment_intent.payment_failed`, `charge.refunded`,
-  `charge.dispute.created`, `charge.dispute.closed`,
-  `customer.subscription.created`, `customer.subscription.updated`,
-  `customer.subscription.deleted`.
-* **Connect:** artists onboard through Stripe-hosted onboarding (recipient
-  accounts, GB). Bookings are destination charges: the artist receives fee +
-  travel in full; the platform keeps the booking fee and the processing line.
-* **Billing:** Support+ is a promoter subscription (Checkout + customer
-  portal). Enable cancellation and payment-method updates in the portal
-  settings, and turn on Smart Retries / failed-payment emails in Stripe.
-* Refunds are issued from the Stripe Dashboard by an admin; the webhook records
-  them. Cancelled-after-payment bookings are flagged for review in `/admin`.
+## 3. Demo data (test projects only)
+
+```bash
+SEED_CONFIRM_PROJECT_REF=<your project ref> node scripts/seed-dev-fixtures.mjs
+```
+
+Creates clearly fictional accounts (two artists, two promoters, an admin, plus
+extra artists), nine listings (open, tonight, closed, cancelled, filled),
+applications at every stage, pending offers, a confirmed booking,
+conversations, saved gigs and a report — all through the real SQL functions.
+Re-running adds nothing twice; `--reset` removes the fixture rows. Logins and
+authenticator secrets are written to `.dev-fixtures/` (gitignored); get a 2FA
+code with `node scripts/totp.mjs artist`.
 
 ## 4. Scheduled jobs
 
@@ -90,24 +97,29 @@ Call these with `Authorization: Bearer $CRON_SECRET`:
 (Vercel Hobby only allows daily crons; use Vercel Pro, GitHub Actions or
 another scheduler for these intervals.)
 
-## 5. How the money and states work
+## 5. How the states work
 
 `submitted → viewed → shortlisted → offered → confirmed` (or `declined`,
 `offer_declined`, `withdrawn`, `cancelled`). A promoter's offer stores the
-agreed terms in integer pence; only the artist accepting makes it a booking
-(one confirmed booking per slot is enforced by a unique index); payment is a
-separate state (`unpaid → processing → paid → partially_refunded/refunded`,
-`failed`, `disputed`) changed only by verified Stripe events. Support Slot is
-not an escrow.
+agreed fee and travel in integer pence; only the artist accepting makes it a
+booking (one confirmed booking per slot is enforced by a unique index). Offers
+expire (at most 7 days) and go back to the shortlist.
 
-## 6. Project layout
+## 6. Promoter tools
+
+Every promoter has: a private artist roster (notes and tags), availability
+requests and request templates, a show-schedule builder, gig invitations, and a
+CSV export of their bookings. They are private to the owning promoter and
+never visible to — or affecting — artists.
+
+## 7. Project layout
 
 ```
 src/app/              pages and API routes
 src/components/       UI (bookings/, listings/, discovery/, layout/, …)
-src/lib/              store, queries, actions, fit, dates, routes, stripe/, server/
-supabase/migrations/  the schema, in order
-tests/db/             real-migration Postgres tests (PGlite)
-scripts/              live security regression script
+src/lib/              store, queries, actions, fit, dates, routes, server/, supabase/
+supabase/migrations/  the schema (one file)
+tests/db/             real-schema Postgres tests (PGlite)
+scripts/              live checks and demo-data scripts
 ios/, capacitor.config.ts   Capacitor iOS shell around the deployed site
 ```

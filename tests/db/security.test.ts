@@ -56,61 +56,39 @@ describe("unauthenticated access", () => {
 });
 
 describe("mass assignment and role escalation", () => {
-  it("an artist cannot self-set verification or Stripe payout linkage on update", async () => {
+  it("an artist cannot self-set verification on update", async () => {
     const artist = await makeArtist(db);
     await expect(
       asUser(db, artist, (tx) =>
         tx.query(
-          `update public.artists set verification = 'verified', stripe_transfers_active = true where id = $1`,
+          `update public.artists set verification = 'verified' where id = $1`,
           [artist]
         )
       )
     ).rejects.toThrow(/can only be changed by the platform/);
   });
 
-  it("an artist cannot self-insert as verified / payout-ready", async () => {
+  it("an artist cannot self-insert as verified", async () => {
     const { signUp } = await import("./harness");
     const id = await signUp(db, "artist");
     await expect(
       asUser(db, id, (tx) =>
         tx.query(
-          `insert into public.artists (id, handle, name, location, verification, stripe_transfers_active)
-           values ($1, 'self-verified', 'X', 'London', 'verified', true)`,
+          `insert into public.artists (id, handle, name, location, verification)
+           values ($1, 'self-verified', 'X', 'London', 'verified')`,
           [id]
         )
       )
     ).rejects.toThrow(/can only be set by the platform/);
   });
 
-  it("Stripe ids live in private tables: nobody can write them, and only the owner can read their own", async () => {
-    const promoter = await makePromoter(db);
-    const other = await makePromoter(db);
-    await db.query(`insert into public.promoter_billing (promoter_id, stripe_customer_id) values ($1, 'cus_mine')`, [promoter]);
-    await expect(
-      asUser(db, other, (tx) =>
-        tx.query(`insert into public.promoter_billing (promoter_id, stripe_customer_id) values ($1, 'cus_forged')`, [other])
-      )
-    ).rejects.toThrow(/row-level security/);
-    const mine = await asUser(db, promoter, (tx) => tx.query(`select stripe_customer_id from public.promoter_billing`));
-    expect(mine.rows).toHaveLength(1);
-    const theirs = await asUser(db, other, (tx) => tx.query(`select * from public.promoter_billing`));
-    expect(theirs.rows).toHaveLength(0);
-    const anon = await asAnon(db, (tx) => tx.query(`select * from public.artist_payment_accounts`));
-    expect(anon.rows).toHaveLength(0);
-  });
-
-  it("a user cannot change their own role or grant themselves Support+", async () => {
+  it("a user cannot change their own role", async () => {
     const promoter = await makePromoter(db);
     await expect(
       asUser(db, promoter, (tx) =>
         tx.query(`update public.profiles set role = 'artist' where id = $1`, [promoter])
       )
     ).rejects.toThrow(/role cannot be changed/);
-    await expect(
-      asUser(db, promoter, (tx) =>
-        tx.query(`update public.profiles set is_support_plus = true where id = $1`, [promoter])
-      )
-    ).rejects.toThrow(/billing system/);
   });
 });
 

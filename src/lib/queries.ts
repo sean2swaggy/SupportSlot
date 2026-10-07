@@ -61,12 +61,12 @@ import type {
 } from "@/lib/types";
 import { effectiveTravelContribution } from "@/lib/travel";
 import { londonToday } from "@/lib/dates";
-import { toBooking, toPaymentEvent, BOOKING_COLUMNS, type BookingRow, type PaymentEventRow } from "@/lib/supabase/mappers";
-import type { Booking, PaymentEvent } from "@/lib/types";
+import { toBooking, BOOKING_COLUMNS, type BookingRow } from "@/lib/supabase/mappers";
+import type { Booking } from "@/lib/types";
 import { validateRecipients } from "@/lib/availability";
 
 export const ARTIST_COLUMNS =
-  "id, handle, name, image_url, banner_image_url, location, genres, spotify_url, instagram_url, tiktok_url, soundcloud_url, bandcamp_url, youtube_url, website_url, monthly_listeners, bio, live_video_thumbnail_url, live_video_url, availability, travel_radius_miles, verification, artist_size, last_minute_alerts, stripe_transfers_active, member_since";
+  "id, handle, name, image_url, banner_image_url, location, genres, spotify_url, instagram_url, tiktok_url, soundcloud_url, bandcamp_url, youtube_url, website_url, monthly_listeners, bio, live_video_thumbnail_url, live_video_url, availability, travel_radius_miles, verification, artist_size, last_minute_alerts, member_since";
 
 async function fetchArtistWithChildren(
   supabase: SupabaseClient,
@@ -150,7 +150,7 @@ export async function getVenue(supabase: SupabaseClient, id: string): Promise<Ve
 }
 
 export const SLOT_COLUMNS =
-  "id, promoter_id, venue_id, headliner, headliner_image_url, artist_photo_url, city, date, doors_time, set_time, performance_length_mins, genres, expected_attendance, support_fee, travel_contribution, booking_fee, requirements, application_deadline, applicant_count, is_urgent, status, artist_size_fit, description, rescheduled_at, posted_at";
+  "id, promoter_id, venue_id, headliner, headliner_image_url, artist_photo_url, city, date, doors_time, set_time, performance_length_mins, genres, expected_attendance, support_fee, travel_contribution, requirements, application_deadline, applicant_count, is_urgent, status, artist_size_fit, description, rescheduled_at, posted_at";
 
 // Includes the venue so a list of cards doesn't need a request per card.
 export const SLOT_WITH_VENUE_COLUMNS = `${SLOT_COLUMNS}, venues(id, name, city, capacity, address, image_url, verification)`;
@@ -326,11 +326,8 @@ export async function getNotifications(supabase: SupabaseClient, profileId: stri
   return data.map(toNotification);
 }
 
-// An artist's bookings, with real payment state. "Received" only counts
-// bookings Stripe has confirmed as paid (and not wholly refunded); what the
-// artist receives is the agreed fee plus travel — Support Slot's booking fee
-// and the card-processing line are never taken from it. Stripe then pays the
-// artist out to their bank on its own schedule (see PayoutPanel).
+// An artist's bookings: the agreed terms. Support Slot doesn't handle money —
+// the promoter pays the artist directly — so there is no payment state here.
 export async function getArtistBookings(
   supabase: SupabaseClient,
   artistId: string
@@ -342,22 +339,6 @@ export async function getArtistBookings(
     .order("event_date", { ascending: false });
   if (error) return { ok: false, error: "We couldn't load your bookings. Please try again." };
   return { ok: true, data: (data as unknown as BookingRow[]).map(toBooking) };
-}
-
-export function summariseArtistEarnings(bookings: Booking[]): { receivedPence: number; awaitingPaymentPence: number } {
-  let received = 0;
-  let awaiting = 0;
-  for (const b of bookings) {
-    const artistShare = b.feePence + b.travelPence;
-    if (b.status === "confirmed") {
-      if (b.paymentStatus === "paid" || b.paymentStatus === "partially_refunded") {
-        received += artistShare;
-      } else if (b.paymentStatus === "unpaid" || b.paymentStatus === "processing" || b.paymentStatus === "failed") {
-        awaiting += artistShare;
-      }
-    }
-  }
-  return { receivedPence: received, awaitingPaymentPence: awaiting };
 }
 
 export async function getPromoterBookings(
@@ -377,16 +358,6 @@ export async function getBookingsForSlot(supabase: SupabaseClient, slotId: strin
   const { data, error } = await supabase.from("bookings").select(BOOKING_COLUMNS).eq("slot_id", slotId);
   if (error || !data) return [];
   return (data as unknown as BookingRow[]).map(toBooking);
-}
-
-export async function getPaymentEvents(supabase: SupabaseClient, bookingId: string): Promise<PaymentEvent[]> {
-  const { data, error } = await supabase
-    .from("payment_events")
-    .select("id, kind, amount_pence, occurred_at")
-    .eq("booking_id", bookingId)
-    .order("occurred_at", { ascending: true });
-  if (error || !data) return [];
-  return (data as PaymentEventRow[]).map(toPaymentEvent);
 }
 
 // Message threads for one side of a conversation (artist or promoter),
@@ -460,9 +431,8 @@ export async function loadEarlierMessages(
 }
 
 // ---------------------------------------------------------------------------
-// Artist Roster — Support+ only (enforced server-side by RLS, see
-// 0010_promoter_support_plus.sql). Read/delete stay available regardless of
-// current subscription status; only insert/update require is_support_plus.
+// Artist Roster — a promoter's private list (enforced server-side by RLS: only
+// the owning promoter can read or write their own entries).
 // ---------------------------------------------------------------------------
 
 const ROSTER_COLUMNS = `id, notes, tags, added_at, artists(${ARTIST_COLUMNS})`;
@@ -804,8 +774,7 @@ export async function isPromoterBlocked(supabase: SupabaseClient, artistId: stri
 
 // ---------------------------------------------------------------------------
 // Gig invitations — the "Invite to gig" action on Discover Artists. Free
-// for every promoter (no Support+ gate, unlike availability requests). See
-// 0015_gig_invitations.sql.
+// for every promoter. See the gig_invitations table.
 // ---------------------------------------------------------------------------
 
 export const GIG_INVITATION_COLUMNS =
@@ -931,14 +900,10 @@ export async function withdrawGigInvitation(supabase: SupabaseClient, id: string
 }
 
 // ---------------------------------------------------------------------------
-// Show Schedule — Support+ only, promoter-owned, never artist-facing. Every
-// table here (0016_show_schedules.sql) is RLS-gated by promoter_is_subscribed()
-// on every operation including select, so a lapsed subscription or an
-// unowned slot simply yields null/empty results here — that's the "block
-// viewing without deleting data" requirement enforced at the database, not
-// just by these functions. Callers should still gate the page itself on
-// useStore().isSupportPlus so a free promoter sees an upgrade prompt instead
-// of a bare empty state.
+// Show Schedule — promoter-owned, never artist-facing. Every table here is
+// RLS-gated to the owning promoter on every operation including select, so an
+// unowned slot simply yields null/empty results here — that's enforced at the
+// database, not just by these functions.
 // ---------------------------------------------------------------------------
 
 export const SCHEDULE_ENTRY_COLUMNS =
@@ -995,7 +960,7 @@ export async function getOrCreateShowSchedule(
   return getShowSchedule(supabase, slotId);
 }
 
-type ScheduleClaim = { ok: true; version: number } | { ok: false; error: "stale" | "support_plus_required" | string };
+type ScheduleClaim = { ok: true; version: number } | { ok: false; error: "stale" | "promoter_required" | string };
 
 // Every mutation below "claims" the next version first via the atomic
 // compare-and-swap RPC (see claim_schedule_version() in the migration).
@@ -1013,7 +978,7 @@ async function claimScheduleVersion(
   });
   if (error) {
     if (error.message.includes("stale_schedule_version")) return { ok: false, error: "stale" };
-    if (error.message.includes("support_plus_required")) return { ok: false, error: "support_plus_required" };
+    if (error.message.includes("promoter_required")) return { ok: false, error: "promoter_required" };
     return { ok: false, error: error.message };
   }
   return { ok: true, version: data as number };

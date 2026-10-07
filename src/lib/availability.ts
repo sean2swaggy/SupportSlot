@@ -36,8 +36,3 @@ export function requestStatusLabel(
   return "open";
 }
 
-// Mirrors the webhook's own rule (customer.subscription.updated/deleted in
-// /api/stripe/webhooks) so both places agree on what "active" means.
-export function isActiveSubscriptionStatus(status: string): boolean {
-  return status === "active" || status === "trialing";
-}

@@ -19,7 +19,6 @@ export interface ListingDraft {
   artistSizeFit: Array<"emerging" | "developing" | "established">;
   supportFee: number;
   travelContribution: number;
-  bookingFee: number;
   applicationDeadline: string;
   requirementsText: string;
   description: string;
@@ -28,7 +27,6 @@ export interface ListingDraft {
 
 export type ListingErrors = Partial<Record<keyof ListingDraft, string>>;
 
-export const MIN_BOOKING_FEE = 10;
 
 export function parseRequirements(text: string): string[] {
   return text
@@ -81,8 +79,6 @@ export function validateListing(
     e.supportFee = "The support fee must be a whole number of pounds between £0 and £100,000.";
   if (!isWholeNumber(d.travelContribution) || d.travelContribution < 0 || d.travelContribution > 5000)
     e.travelContribution = "Travel contribution must be a whole number of pounds between £0 and £5,000.";
-  if (!isWholeNumber(d.bookingFee) || d.bookingFee < MIN_BOOKING_FEE || d.bookingFee > 1000)
-    e.bookingFee = `The booking fee must be a whole number of pounds between £${MIN_BOOKING_FEE} and £1,000.`;
 
   if (parseRequirements(d.requirementsText).length > 10) e.requirementsText = "At most 10 requirements.";
   if (d.description.length > 2000) e.description = "The description is too long (2,000 characters max).";

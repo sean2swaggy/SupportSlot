@@ -8,7 +8,7 @@ import { getVenues } from "@/lib/queries";
 import { updateListing } from "@/lib/actions";
 import { londonToday } from "@/lib/dates";
 import { friendlyError } from "@/lib/errors";
-import { MIN_BOOKING_FEE, parseRequirements, validateListing, type ListingDraft, type ListingErrors } from "@/lib/listing";
+import { parseRequirements, validateListing, type ListingDraft, type ListingErrors } from "@/lib/listing";
 import Button from "@/components/ui/Button";
 import ImageUploadField from "@/components/ui/ImageUploadField";
 import SlotCard from "@/components/slots/SlotCard";
@@ -44,7 +44,6 @@ function draftFromSlot(slot: SupportSlot): ListingDraft {
     artistSizeFit: slot.artistSizeFit,
     supportFee: slot.supportFee,
     travelContribution: slot.travelContribution,
-    bookingFee: slot.bookingFee,
     applicationDeadline: slot.applicationDeadline,
     requirementsText: slot.requirements.join("\n"),
     description: slot.description,
@@ -64,7 +63,6 @@ const EMPTY: ListingDraft = {
   artistSizeFit: ["emerging"],
   supportFee: 150,
   travelContribution: 0,
-  bookingFee: MIN_BOOKING_FEE,
   applicationDeadline: "",
   requirementsText: "",
   description: "",
@@ -140,7 +138,6 @@ export default function ListingForm({
         expectedAttendance: effective.expectedAttendance,
         supportFee: effective.supportFee,
         travelContribution: effective.travelContribution,
-        bookingFee: effective.bookingFee,
         requirements: parseRequirements(effective.requirementsText),
         applicationDeadline: effective.applicationDeadline || today,
         applicantCount: existing?.applicantCount ?? 0,
@@ -179,7 +176,6 @@ export default function ListingForm({
         expectedAttendance: effective.expectedAttendance,
         supportFee: effective.supportFee,
         travelContribution: effective.travelContribution,
-        bookingFee: effective.bookingFee,
         requirements: parseRequirements(effective.requirementsText),
         applicationDeadline: effective.applicationDeadline,
         isUrgent: effective.isUrgent,
@@ -257,7 +253,7 @@ export default function ListingForm({
           <div><dt className={labelCls}>Doors / on stage</dt><dd>{effective.doorsTime} / {effective.setTime} ({effective.performanceLengthMins} min)</dd></div>
           <div><dt className={labelCls}>Applications close</dt><dd>{formatDate(effective.applicationDeadline, { withYear: true })}</dd></div>
           <div><dt className={labelCls}>Support fee</dt><dd>{formatGBP(effective.supportFee)} + {formatGBP(effective.travelContribution)} travel</dd></div>
-          <div><dt className={labelCls}>You pay in total (if booked)</dt><dd>about {formatGBP(effective.supportFee + effective.travelContribution + effective.bookingFee)} plus card processing</dd></div>
+          <div><dt className={labelCls}>Payment</dt><dd>You pay the artist directly if you book them — Support Slot doesn&rsquo;t handle payment.</dd></div>
         </dl>
         {effective.isUrgent && <p className="mt-4 text-sm text-signal">Marked last-minute: artists nearby with alerts on are notified.</p>}
         {submitError && <p className="mt-6 text-sm text-signal" role="alert">{submitError}</p>}
@@ -393,12 +389,6 @@ export default function ListingForm({
             <input id="lf-travel" type="number" min={0} step={1} className={inputCls()} value={Number.isNaN(draft.travelContribution) ? "" : draft.travelContribution} disabled={materialLocked} onChange={(e) => set("travelContribution", num(e.target.value))} />
             <FieldError id="lf-travel-err" message={show("travelContribution")} />
             <p className="mt-2 text-[11px] text-paper-dim">For an artist travelling over an hour, this is raised to a £10 minimum automatically.</p>
-          </div>
-          <div>
-            <label htmlFor="lf-book" className={labelCls}>Support Slot booking fee (£)</label>
-            <input id="lf-book" type="number" min={MIN_BOOKING_FEE} step={1} className={inputCls()} value={Number.isNaN(draft.bookingFee) ? "" : draft.bookingFee} disabled={materialLocked} onChange={(e) => set("bookingFee", num(e.target.value))} />
-            <FieldError id="lf-book-err" message={show("bookingFee")} />
-            <p className="mt-2 text-[11px] text-paper-dim">Paid by you, on top of the artist&rsquo;s fee, only if you book someone — never taken from the artist. £{MIN_BOOKING_FEE} minimum.</p>
           </div>
           <div>
             <label htmlFor="lf-deadline" className={labelCls}>Applications close</label>

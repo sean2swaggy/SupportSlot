@@ -19,7 +19,7 @@ export default function SaveToRosterButton({
   artistId: string;
   size?: "sm" | "md";
 }) {
-  const { role, currentPromoterId, isSupportPlus } = useStore();
+  const { role, currentPromoterId } = useStore();
   const [rosterEntryId, setRosterEntryId] = useState<string | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
@@ -40,7 +40,6 @@ export default function SaveToRosterButton({
   const saved = !!rosterEntryId;
 
   const toggle = async () => {
-    if (!isSupportPlus) return;
     setBusy(true);
     const supabase = createClient();
     if (saved && rosterEntryId) {
@@ -60,21 +59,6 @@ export default function SaveToRosterButton({
     }
     setBusy(false);
   };
-
-  if (!isSupportPlus) {
-    return (
-      <a
-        href="/support-plus"
-        title="Save artists to your roster with Support+"
-        className={cn(
-          "inline-flex items-center gap-1.5 border border-ink-border px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-paper-dim hover:border-paper transition-colors",
-          size === "sm" && "px-2.5 py-1.5"
-        )}
-      >
-        ☆ Save (Support+)
-      </a>
-    );
-  }
 
   return (
     <button

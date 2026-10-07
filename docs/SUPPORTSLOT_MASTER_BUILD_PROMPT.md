@@ -1,3 +1,10 @@
+> **SUPERSEDED (7 October 2026).** This prompt describes the earlier build that used Stripe payments,
+> a booking fee, payouts and a paid "Support+" tier. Those were removed: Support Slot now handles no
+> money, the promoter tools are free for every promoter, and the schema is one file
+> (`supabase/migrations/0001_initial_schema.sql`). Sections that mention Stripe, payment states, booking
+> fees, Support+ pricing/entitlements, webhooks, Connect, refunds or the 24-migration history no longer
+> apply. See `docs/CURRENT_STATE.md` for what exists today. Regenerate this prompt before reusing it.
+
 # SupportSlot — Master Build Prompt
 
 _Paste everything below the line into a fresh Claude Code session. It is self-contained._

@@ -5,7 +5,7 @@
 //     to 5 attempts) or ends 'failed' with the provider's error.
 //   - With no RESEND_API_KEY the sender does nothing at all and says so —
 //     nothing is ever reported as sent.
-//   - Only transactional notices go out (offers, bookings, payments); there
+//   - Only transactional notices go out (offers, bookings, messages); there
 //     is no marketing mail, so there is nothing to opt out of beyond the
 //     account-level email_notifications switch the queue already respects.
 

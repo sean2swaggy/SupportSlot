@@ -14,7 +14,6 @@ const valid: ListingDraft = {
   artistSizeFit: ["emerging"],
   supportFee: 150,
   travelContribution: 20,
-  bookingFee: 10,
   applicationDeadline: "2030-07-01",
   requirementsText: "Own backline\n",
   description: "",
@@ -41,10 +40,10 @@ describe("validateListing", () => {
 
   it("checks times, money and counts against the database's limits", () => {
     const e = validateListing(
-      { ...valid, setTime: "18:00", performanceLengthMins: 3, supportFee: -1, travelContribution: 6000, bookingFee: 9, expectedAttendance: 0, genres: [] },
+      { ...valid, setTime: "18:00", performanceLengthMins: 3, supportFee: -1, travelContribution: 6000, expectedAttendance: 0, genres: [] },
       TODAY
     );
-    expect(Object.keys(e).sort()).toEqual(["bookingFee", "expectedAttendance", "genres", "performanceLengthMins", "setTime", "supportFee", "travelContribution"]);
+    expect(Object.keys(e).sort()).toEqual(["expectedAttendance", "genres", "performanceLengthMins", "setTime", "supportFee", "travelContribution"]);
   });
 
   it("rejects fractional pounds and NaN (the database stores whole pounds)", () => {

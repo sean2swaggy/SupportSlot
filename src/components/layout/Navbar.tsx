@@ -27,16 +27,14 @@ const artistLinks = [
 ];
 
 // Focused per the artist-discovery redesign: browsing artists is now the
-// promoter's primary destination, not a secondary tab. Availability
-// requests (Support+) stays reachable from the dashboard and roster pages
-// rather than living in top-level nav alongside these five.
+// promoter's primary destination, not a secondary tab.
 const promoterLinks = [
   { href: "/discover", label: "Discover Artists" },
   { href: "/dashboard/promoter", label: "My Gigs" },
   { href: "/dashboard/promoter#applicants", label: "Applications" },
   { href: "/dashboard/promoter/roster", label: "Artist Roster" },
   { href: "/messages", label: "Messages" },
-  { href: "/support-plus", label: "Support+" },
+  { href: "/dashboard/promoter/requests", label: "Requests" },
 ];
 
 export default function Navbar() {

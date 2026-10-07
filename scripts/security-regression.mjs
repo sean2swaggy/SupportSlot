@@ -2,7 +2,7 @@
 // Support Slot — security regression checks.
 //
 // Runs real negative-test scenarios against the LIVE Supabase project
-// configured in .env.local (Stripe stays in test mode throughout — nothing
+// configured in .env.local (nothing
 // here charges a real card). Every account/row this script creates is
 // deleted again at the end, in a `finally` block, even on failure.
 //
@@ -170,34 +170,18 @@ async function main() {
     );
   }
   {
-    const { error } = await promoterA.client
-      .from("profiles")
-      .update({ is_support_plus: true })
-      .eq("id", promoterA.id);
-    const { data: check } = await admin.from("profiles").select("is_support_plus").eq("id", promoterA.id).single();
-    record(
-      "A client cannot self-grant Support+ (profiles.is_support_plus is service-role only)",
-      check?.is_support_plus === false,
-      error ? error.message : "no error returned, but flag unchanged"
-    );
-  }
-  {
-    // This is the mass-assignment gap fixed by
-    // 0018_lock_down_trust_and_payment_fields.sql — FAILS until that
-    // migration has been applied to this project (see the launch-risk
-    // report for why it can't be applied by this script).
     const { error } = await artistA.client
       .from("artists")
-      .update({ verification: "verified", stripe_account_id: "acct_fake", stripe_transfers_active: true })
+      .update({ verification: "verified" })
       .eq("id", artistA.id);
     const { data: check } = await admin
       .from("artists")
-      .select("verification, stripe_account_id, stripe_transfers_active")
+      .select("verification")
       .eq("id", artistA.id)
       .single();
     record(
-      "Artist cannot self-set verification / Stripe payout fields (needs migration 0018)",
-      check?.verification === "unverified" && !check?.stripe_transfers_active,
+      "Artist cannot self-set verification",
+      check?.verification === "unverified",
       error ? error.message : "no error returned — fields were written by the client"
     );
   }
@@ -258,7 +242,7 @@ async function main() {
   {
     // A booking can only come from make_offer; clients have no insert/update on bookings at all.
     const { error } = await promoterA.client.from("bookings").insert({
-      slot_id: slotA.id, artist_id: artistA.id, promoter_id: promoterA.id, status: "confirmed", payment_status: "paid",
+      slot_id: slotA.id, artist_id: artistA.id, promoter_id: promoterA.id, status: "confirmed",
     });
     record("A client cannot insert a booking row directly", !!error, error?.message ?? "no error — a booking was written by the client");
   }
@@ -276,22 +260,14 @@ async function main() {
   {
     const anon = createClient(SUPABASE_URL, ANON_KEY);
     const { error } = await anon.rpc("admin_recent_bookings", { p_limit: 5 });
-    record("A signed-out client cannot call admin payment reads", !!error, error?.message ?? "no error");
+    record("A signed-out client cannot call the admin bookings list", !!error, error?.message ?? "no error");
   }
 
   // ---------------------------------------------------------------------
-  // 5. Manipulated payment amount / recipient / booking id.
+  // 5. Server routes refuse requests with no session.
   // ---------------------------------------------------------------------
   {
-    const res = await fetch(`${APP_URL}/api/bookings/${applicationA.id}/pay`, { method: "POST" });
-    record(
-      "Pay endpoint rejects a request with no session, whatever id is supplied",
-      res.status === 401,
-      `status ${res.status}`
-    );
-  }
-  {
-    for (const path of ["/api/account/delete", "/api/account/export", "/api/stripe/connect/onboard"]) {
+    for (const path of ["/api/account/delete", "/api/account/export", "/api/reports/bookings"]) {
       const res = await fetch(`${APP_URL}${path}`, { method: path.endsWith("export") ? "GET" : "POST", redirect: "manual" });
       record(`${path} requires a session`, res.status === 401, `status ${res.status}`);
     }
@@ -300,35 +276,7 @@ async function main() {
   }
 
   // ---------------------------------------------------------------------
-  // 6. Invalid / replayed webhook signatures.
-  // ---------------------------------------------------------------------
-  {
-    const res = await fetch(`${APP_URL}/api/stripe/webhooks`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "stripe-signature": "t=1,v1=invalid" },
-      body: JSON.stringify({ type: "payment_intent.succeeded", data: { object: {} } }),
-    });
-    record(
-      "Webhook with an invalid signature is rejected, not processed",
-      res.status === 400,
-      `status ${res.status}`
-    );
-  }
-  {
-    const res = await fetch(`${APP_URL}/api/stripe/webhooks`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    });
-    record(
-      "Webhook endpoint is actually reachable (not redirected to /login by middleware)",
-      res.status === 400 && !res.redirected,
-      `status ${res.status}, redirected=${res.redirected}`
-    );
-  }
-
-  // ---------------------------------------------------------------------
-  // 7. Malicious profile content (javascript: URL in a platform link).
+  // 6. Malicious profile content (javascript: URL in a platform link).
   // Covered by src/lib/artist-links.test.ts (`npm test`) instead of here —
   // isSafeExternalUrl is a plain TS function with no live dependency, and
   // this script's plain-Node runtime has no TS loader to import it with.

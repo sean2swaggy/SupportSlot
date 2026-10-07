@@ -73,7 +73,7 @@ export default function ListingActions({ slot, onChanged }: { slot: SupportSlot;
         title="Cancel this listing?"
         body={
           slot.status === "filled"
-            ? "This listing has a confirmed artist. Cancelling it cancels their booking and tells them; if they'd already been paid, our team reviews the refund."
+            ? "This listing has a confirmed artist. Cancelling it cancels their booking and tells them."
             : "Everyone who applied is told the listing was cancelled, and any outstanding offer is withdrawn."
         }
         confirmLabel="Cancel listing"

@@ -12,7 +12,7 @@ import { Tag } from "@/components/ui/Tag";
 import type { Application, Genre, RosterEntry, SupportSlot } from "@/lib/types";
 
 export default function RosterPage() {
-  const { currentPromoterId, isSupportPlus } = useStore();
+  const { currentPromoterId } = useStore();
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -61,7 +61,7 @@ export default function RosterPage() {
       <div className="mt-4 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-acid mb-2">
-            Support+ · Private
+            Private
           </p>
           <h1 className="font-display uppercase text-3xl sm:text-5xl leading-none">Artist roster</h1>
           <p className="mt-3 max-w-[60ch] text-paper-dim">
@@ -73,22 +73,6 @@ export default function RosterPage() {
           Availability requests
         </Button>
       </div>
-
-      {!isSupportPlus && (
-        <div className="mt-8 border border-acid/50 bg-acid/5 p-5">
-          <p className="font-mono text-[10px] uppercase tracking-widest text-acid mb-1">
-            Support+ has lapsed
-          </p>
-          <p className="text-sm text-paper-dim">
-            Your roster is preserved and still visible below, but adding artists or editing notes
-            needs an active Support+ subscription.{" "}
-            <Link href="/support-plus" className="underline hover:text-paper">
-              Resubscribe
-            </Link>
-            .
-          </p>
-        </div>
-      )}
 
       {roster.length > 0 && (
         <div className="mt-8 flex flex-wrap gap-3">
@@ -160,7 +144,7 @@ export default function RosterPage() {
             <RosterCard
               key={entry.id}
               entry={entry}
-              editable={isSupportPlus}
+              editable
               onRemoved={load}
               onOpenHistory={() => setHistoryFor(entry)}
             />

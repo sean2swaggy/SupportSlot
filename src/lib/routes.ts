@@ -20,7 +20,7 @@ const PUBLIC_PREFIXES = ["/slot/", "/artist/", "/auth/"];
 /** Auth-flow screens: reachable signed-out (login) or mid-flow (the rest). */
 export const AUTH_SCREENS = ["/login", "/forgot-password", "/onboarding", "/mfa-setup", "/mfa-challenge", "/suspended"];
 
-export const PROMOTER_ONLY_PREFIXES = ["/create-slot", "/dashboard/promoter", "/promoter", "/support-plus"];
+export const PROMOTER_ONLY_PREFIXES = ["/create-slot", "/dashboard/promoter", "/promoter"];
 export const ARTIST_ONLY_PREFIXES = ["/dashboard/artist", "/applications", "/requests", "/saved"];
 export const ADMIN_PREFIX = "/admin";
 
