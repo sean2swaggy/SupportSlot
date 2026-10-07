@@ -131,7 +131,7 @@ export default async function Home() {
             {
               n: "03",
               t: "Apply in seconds",
-              d: "Choose a track and a live clip from your profile. No forms, no repeated info — submit in under 30 seconds.",
+              d: "Pick a track from your profile and add a short note. Your links and live clip are already on your profile for the promoter to open.",
             },
           ].map((s) => (
             <div key={s.n} className="border-t border-ink-border pt-5">

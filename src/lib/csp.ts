@@ -35,7 +35,10 @@ export function buildCsp() {
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' https://js.stripe.com",
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: blob:${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
+    // picsum.photos (and the fastly host it redirects to) serves the placeholder
+    // venue photos seeded in 0003_seed_venues.sql. Images only, never script.
+    // Remove both once venue photography is hosted in Supabase Storage.
+    `img-src 'self' data: blob: https://picsum.photos https://fastly.picsum.photos${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
     "font-src 'self'",
     `connect-src 'self' https://api.stripe.com https://m.stripe.network${supabaseOrigin ? ` ${supabaseOrigin} ${supabaseWs}` : ""}`,
     "frame-src https://js.stripe.com https://hooks.stripe.com",
