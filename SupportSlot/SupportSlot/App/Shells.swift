@@ -30,11 +30,41 @@ struct VisitorShell: View {
 /// Signed-in artists and promoters.
 struct MainShell: View {
     @Environment(AppStore.self) private var store
+
     var body: some View {
-        VStack(spacing: 14) {
-            Text("Signed in as \(store.role.title)").font(Theme.display(24)).foregroundStyle(Theme.paper)
-            Button("Log out") { Task { await store.signOut() } }.buttonStyle(.appOutline)
+        @Bindable var store = store
+        TabView(selection: $store.selectedTab) {
+            if store.role == .artist {
+                NavigationStack { DiscoverView() }
+                    .tabItem { Label("Discover", systemImage: "magnifyingglass") }.tag(AppTab.discover)
+                NavigationStack { ApplicationsView() }
+                    .tabItem { Label("Applications", systemImage: "doc.text") }.tag(AppTab.applications)
+                NavigationStack { SavedView() }
+                    .tabItem { Label("Saved", systemImage: "bookmark") }.tag(AppTab.saved)
+                MessagesView()
+                    .tabItem { Label("Messages", systemImage: "bubble.left") }.tag(AppTab.messages).badge(store.unreadThreadCount)
+                NavigationStack { MeView() }
+                    .tabItem { Label("Profile", systemImage: "person") }.tag(AppTab.me)
+            } else {
+                NavigationStack { DiscoverArtistsView() }
+                    .tabItem { Label("Artists", systemImage: "music.mic") }.tag(AppTab.artists)
+                NavigationStack { MyGigsView() }
+                    .tabItem { Label("My gigs", systemImage: "calendar") }.tag(AppTab.myGigs)
+                MessagesView()
+                    .tabItem { Label("Messages", systemImage: "bubble.left") }.tag(AppTab.messages).badge(store.unreadThreadCount)
+                NavigationStack { ToolsView() }
+                    .tabItem { Label("Tools", systemImage: "square.grid.2x2") }.tag(AppTab.tools)
+                NavigationStack { MeView() }
+                    .tabItem { Label("Account", systemImage: "person") }.tag(AppTab.me)
+            }
         }
-        .padding()
+        .toolbarBackground(Theme.ink, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
+        .onAppear { store.selectedTab = store.role == .artist ? .discover : .myGigs }
+        .sheet(item: Binding(get: { store.presentedSlotID.map(SlotRoute.init) }, set: { store.presentedSlotID = $0?.id })) { route in
+            NavigationStack { SlotDetailView(slotId: route.id) }.environment(store).presentationBackground(Theme.ink)
+        }
     }
 }
+
+struct SlotRoute: Identifiable { let id: ID }

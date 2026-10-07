@@ -1,0 +1,144 @@
+import SwiftUI
+
+/// The "Me" tab: your profile, your preferences, help and the staff tools.
+struct MeView: View {
+    @Environment(AppStore.self) private var store
+    @State private var alertsError: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                header
+                if store.role == .artist { artistSection } else { promoterSection }
+                common
+            }
+            .padding(20)
+        }
+        .refreshable { await store.refresh() }
+        .screenBackground()
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { NotificationsButton() } }
+    }
+
+    private var header: some View {
+        HStack(spacing: 14) {
+            Avatar(imageUrl: store.ownImage, name: store.displayName, size: 72)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(store.displayName).font(Theme.display(24)).foregroundStyle(Theme.paper).lineLimit(2)
+                HStack(spacing: 8) { Tag(store.role.title, tint: Theme.acid); if (store.artist?.isVerified ?? store.promoter?.isVerified) == true { VerifiedBadge() } }
+                if let u = store.profile?.username { Text("@\(u)").font(Theme.mono(12)).foregroundStyle(Theme.paperDim) }
+            }
+        }
+    }
+
+    // MARK: Artist
+
+    @ViewBuilder private var artistSection: some View {
+        if let artist = store.artist {
+            let c = ProfileChecklist.completion(ProfileChecklist.items(for: artist))
+            row("Edit your profile", detail: "\(c.done)/\(c.total) done", icon: "person.crop.square") { ProfileEditorView() }
+            row("Your public page", detail: "How promoters see you", icon: "eye") { ArtistProfileView(handle: artist.handle, preloaded: artist) }
+            Card {
+                Toggle(isOn: Binding(get: { artist.lastMinuteAlerts }, set: { v in Task { await setAlerts(v, artist) } })) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Last-minute alerts").font(Theme.body(15, weight: .medium)).foregroundStyle(Theme.paper)
+                        Text("Tell me when a promoter within my travel radius needs a support act at short notice.").font(Theme.body(12)).foregroundStyle(Theme.paperDim)
+                    }
+                }.tint(Theme.acid)
+                FieldError(message: alertsError)
+            }
+        }
+        row("Requests & invitations", detail: "From promoters", icon: "calendar.badge.questionmark") { ArtistRequestsView() }
+    }
+
+    private func setAlerts(_ v: Bool, _ artist: Artist) async {
+        alertsError = nil
+        do { try await store.perform { try await store.db.setLastMinuteAlerts(id: artist.id, enabled: v) } }
+        catch { alertsError = (error as? AppError)?.message }
+    }
+
+    // MARK: Promoter
+
+    @ViewBuilder private var promoterSection: some View {
+        if let promoter = store.promoter {
+            row("Your details", detail: promoter.location ?? "", icon: "building.2") { PromoterDetailsView(promoter: promoter) }
+        }
+    }
+
+    // MARK: Common
+
+    @ViewBuilder private var common: some View {
+        if store.profile?.isStaff == true { row("Staff tools", detail: store.adminRole ?? "", icon: "shield") { StaffView() } }
+        row("Settings", detail: "Password, data, account", icon: "gearshape") { SettingsView() }
+        row("Help & support", detail: "Contact us", icon: "questionmark.circle") { SupportView() }
+        row("Trust & safety", detail: "No pay-to-play. Ever.", icon: "checkmark.shield") { LegalView(document: LegalContent.trust).navigationTitle("Trust & safety") }
+        Button("Log out") { Task { await store.signOut() } }.buttonStyle(.appOutline).padding(.top, 6)
+    }
+
+    private func row<Destination: View>(_ title: String, detail: String, icon: String, @ViewBuilder destination: @escaping () -> Destination) -> some View {
+        NavigationLink { destination() } label: {
+            HStack(spacing: 14) {
+                Image(systemName: icon).font(.system(size: 18)).foregroundStyle(Theme.acid).frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(Theme.body(16, weight: .medium)).foregroundStyle(Theme.paper)
+                    if !detail.isEmpty { Text(detail).font(Theme.body(12)).foregroundStyle(Theme.paperDim) }
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Theme.paperDim)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.inkCard)
+            .overlay(Rectangle().stroke(Theme.inkBorder, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// A promoter's company details (name shown on every listing, city, photo).
+struct PromoterDetailsView: View {
+    @Environment(AppStore.self) private var store
+    let promoter: Promoter
+    @State private var company: String
+    @State private var city: String
+    @State private var avatar: String?
+    @State private var error: String?
+    @State private var saved = false
+
+    init(promoter: Promoter) {
+        self.promoter = promoter
+        _company = State(initialValue: promoter.company); _city = State(initialValue: promoter.location ?? Catalog.cities[0]); _avatar = State(initialValue: promoter.avatarUrl)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) { Eyebrow("Promoter"); DisplayTitle("Your details", size: 30) }
+                Text("This appears on every slot you post.").dimBody(14)
+                PhotoField(label: "Profile photo", imageUrl: $avatar, maxDimension: 640)
+                LabeledField(label: "Company / collective name") { TextField("Your company", text: $company).fieldStyle() }
+                LabeledField(label: "Based in") {
+                    Menu {
+                        Picker("City", selection: $city) { ForEach(Catalog.cities, id: \.self) { Text($0).tag($0) } }
+                    } label: { HStack { Text(city).foregroundStyle(Theme.paper); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(Theme.paperDim) }.fieldStyle() }
+                }
+                if saved { Text("Saved ✓").font(Theme.mono(11)).foregroundStyle(Theme.ok).textCase(.uppercase) }
+                if let error { Banner(kind: .error, text: error) }
+                AsyncButton { await save() } label: { Text("Save") }
+            }
+            .padding(20)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .screenBackground()
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func save() async {
+        error = nil; saved = false
+        let name = company.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty { error = "Enter your company or collective name."; return }
+        do { try await store.perform { try await store.db.updatePromoter(id: promoter.id, company: name, location: city, avatarUrl: avatar) }; saved = true }
+        catch { self.error = (error as? AppError)?.message }
+    }
+}
