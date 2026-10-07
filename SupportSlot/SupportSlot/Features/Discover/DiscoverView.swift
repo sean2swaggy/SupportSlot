@@ -35,7 +35,7 @@ struct DiscoverView: View {
                 filterBar
 
                 switch model.status {
-                case .idle, .loading where model.slots.isEmpty:
+                case .idle where model.slots.isEmpty, .loading where model.slots.isEmpty:
                     LoadingView(label: "Finding listings…")
                 case .failed(let error):
                     ErrorState(error: error) { Task { await reload() } }
