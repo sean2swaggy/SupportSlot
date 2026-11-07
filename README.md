@@ -30,7 +30,7 @@ SupportSlot/                 Xcode project (SupportSlot.xcodeproj) and sources
   SupportSlot/Features/      Screens by area (Auth, Discover, Promoter, Staff…)
   SupportSlotTests/          XCTest unit tests (stubbed network)
   Config/                    Base.xcconfig, Secrets.example.xcconfig, Info.plist
-supabase/migrations/         0001–0005: schema, app functions, session security, UK locations, data export
+supabase/migrations/         0001–0006: schema, app functions, session security, UK locations, data export, function search paths
 supabase/sql-editor/         the same files, for pasting into the Supabase SQL editor
 tests/db/                    Postgres tests: real migrations in-process (PGlite)
 scripts/                     Live checks and demo-data scripts (Node)
@@ -40,8 +40,8 @@ docs/                        CURRENT_STATE.md and archived planning docs
 ## Set it up
 
 1. **Create a Supabase project** (a separate one for testing is wise).
-2. Dashboard → SQL Editor: run the five files in `supabase/sql-editor/`
-   (`0001` through `0005`), one at a time, in order, once each, on an empty
+2. Dashboard → SQL Editor: run the six files in `supabase/sql-editor/`
+   (`0001` through `0006`), one at a time, in order, once each, on an empty
    project (see `supabase/sql-editor/README.txt`). They are exact copies of
    `supabase/migrations/`. Future changes go in new numbered files.
 3. Dashboard → Authentication → URL Configuration: add the redirect URL

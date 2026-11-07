@@ -1,7 +1,7 @@
 # Support Slot — Current State (7 Nov 2026, branch `app/native-ios`)
 
 ## Live project
-Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 applied by hand in the SQL editor on 7 Nov 2026). `SupportSlot/Config/Secrets.xcconfig` and `.env.local` point at it. The service-role key in `.env.local` is still the old project's, so the live scripts cannot run until it is replaced. `.env.local` also holds stale Stripe keys (unused; delete them). The test account created during setup was deleted again.
+Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 applied by hand in the SQL editor, and 0006 applied through the Supabase connection, on 7 Nov 2026). `SupportSlot/Config/Secrets.xcconfig` and `.env.local` point at it. The service-role key in `.env.local` is still the old project's, so the live scripts cannot run until it is replaced. `.env.local` also holds stale Stripe keys (unused; delete them). The test account created during setup was deleted again.
 
 ## Done this session
 - Migrations (run 0001→0005 in order, once each):
@@ -12,7 +12,7 @@ Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 app
 - Scripts rewritten for the new schema (`live-journey`, `security-regression`, `seed-dev-fixtures`, `lib/live.mjs`): **NOT RUN** (need the new service-role key).
 
 ## Verified (actual results, 7 Nov 2026)
-- `npm test`: 149 database tests passing (real migrations in PGlite).
+- `npm test`: 151 database tests passing (real migrations in PGlite).
 - Swift unit tests passing; app builds and launches in the iPhone 17 simulator against the live project.
 - Live project, anon key only: `london_today()` and `search_slots` answer (200, empty list); reading `profiles` anonymously is refused (401), as migration 0003 intends.
 - Web companion (`web/`): 20 tests, type-check and production build pass; `npm run app` runs a shared-data server (sign-up, booking, alerts, messages, restart persistence checked by hand).
@@ -30,3 +30,6 @@ Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 app
 
 ## Web companion
 `web/` (Vite + React + a small Node server) is a separate, sample-data-backed web app for the same product. It does not talk to Supabase or the iOS app. See `web/README.md`.
+
+## Supabase advisor (7 Nov 2026, after 0006)
+No search-path warnings. Remaining warnings are expected: the app's own SECURITY DEFINER functions are callable by signed-in users by design (and `submit_support_request` by visitors), and leaked-password protection is a dashboard toggle that is off.
