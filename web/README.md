@@ -1,16 +1,26 @@
 # Support Slot — web companion
 
-A small web app for the same product as the iOS app: **promoters post support
-(opening-act) slots, artists request them, promoters confirm one act.** It runs
-entirely on sample data stored in the browser; nothing talks to Supabase yet.
+A web app for the same product as the iOS app: **promoters post support
+(opening-act) slots, artists request them, promoters confirm one act.** It has
+two modes, and neither needs Supabase, Docker or any account:
 
 ```bash
 cd web
 npm install
-npm run dev        # http://127.0.0.1:5173
-npm test           # rule tests for the data layer (14)
+npm run app        # the real app: http://127.0.0.1:8787
+npm run dev        # browser-only demo (data in local storage): http://127.0.0.1:5173
+npm test           # rules + server integration tests (20)
 npm run build      # type-check + production build
 ```
+
+**`npm run app`** builds the site and starts one Node process that serves it and
+a JSON API. Accounts, listings, bookings, alerts and messages live in
+`web/data/db.json` (gitignored), so every browser or device that reaches the
+server shares them. Sessions are random tokens held server-side; the server
+decides who is acting and ignores any user id the client sends. Delete `web/data/`
+to reset to the sample data. To let other devices on your network use it:
+`HOST=0.0.0.0 npm run app` (then browse to your Mac's address; there is no HTTPS).
+`PORT` and `DATA_FILE` are also read from the environment.
 
 ## Try it
 Join as an artist or promoter on the landing page, or sign in with a sample
@@ -28,16 +38,17 @@ account (buttons on the sign-in page; password `demo1234`, emails
 ## Structure
 ```
 src/domain/    types, UK date maths (strings, never Date-from-ISO), pence money
-src/data/      repo.ts = the interface every screen uses; localRepo.ts = browser
-               implementation with all the rules; seed.ts = sample data
+src/data/      repo.ts = the interface every screen uses; localRepo.ts = all the
+               rules (used in the browser and by the server); httpRepo.ts = client
+               for the server; seed.ts = sample data
+server/        server.ts: static files + /api/rpc, sessions, sign-in throttle
 src/pages/     Landing, Browse, SlotDetail, Bookings, BookingDetail,
                Listings, ListingForm, ListingManage
 tests/         rules: who may do what, state transitions, idempotency, dates
 ```
-**Adding real persistence:** write a Supabase implementation of `Repo`
-(`src/data/repo.ts`) and change the one line in `src/data/index.ts`. The rules in
-`localRepo.ts` mirror the SQL state machine used by the iOS app (see
-`../CLAUDE.md`); in production they must live in SQL functions, not the client.
+**Swapping the backend:** anything that implements `Repo` (`src/data/repo.ts`)
+can replace the server; `src/data/index.ts` picks the implementation. The rules in
+`localRepo.ts` mirror the SQL state machine the iOS app uses (see `../CLAUDE.md`).
 
 ## Assumptions
 - Support Slot means what the repo says: artist/promoter opening-act marketplace
@@ -55,18 +66,19 @@ tests/         rules: who may do what, state transitions, idempotency, dates
   declines the other pending requests.
 - Sample data is fictional and generated relative to today. Reset it by clearing
   this site's local storage.
-- Accounts are real in the sense that sign-up, sign-in (salted SHA-256), profiles,
-  in-app alerts and per-request messaging all work, but they live in this browser's
-  local storage: other devices and browsers see none of it. Not secure.
+- Accounts: sign-up, sign-in (salted SHA-256), profiles, in-app alerts and
+  per-request messaging. In `npm run app` they're server-side and shared; in
+  `npm run dev` they're local to the browser.
 - Messaging is one thread per request between the artist and that listing's
   promoter; alerts are in-app only (no email or push). Threads refresh every 5 s.
 
-## Needs real services
-- **Auth** (Supabase Auth with TOTP like the iOS app) in place of local accounts.
-- **Persistence and rules in the database** (shared with the iOS app's schema;
-  new migration needed for any web-only fields). Browser storage is per-device
-  and last-write-wins.
-- **Shared data, realtime messaging and email/push** so people on different
-  devices actually see each other's requests and messages.
-- **Not done:** image uploads, password reset, accessibility audit with a screen
-  reader, cross-browser testing beyond the in-app browser.
+## Limits (be honest about what this is)
+- One Node process writing one JSON file: fine for a small group or a pilot, not
+  for scale or for several server processes. Back up `web/data/db.json`.
+- No HTTPS, no email (so no password reset or email verification), no push,
+  no rate limiting beyond a per-email sign-in throttle, no 2FA. Put it behind a
+  proper host and TLS before exposing it to the internet.
+- Alerts are in-app; the alert badge refreshes every 4 s and threads every 5 s.
+- Not done: image uploads, screen-reader and cross-browser testing.
+- The iOS app is separate and still needs its own Supabase project; this server
+  does not speak to it.

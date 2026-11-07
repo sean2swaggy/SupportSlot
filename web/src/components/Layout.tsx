@@ -59,7 +59,7 @@ export function Layout() {
         </nav>
       )}
       <footer className="footer">
-        <p>Support Slot connects artists and promoters. No money passes through it: the promoter pays the artist directly. This build stores everything in your browser only; accounts and messages are not shared with other devices.</p>
+        <p>Support Slot connects artists and promoters. No money passes through it: the promoter pays the artist directly. {import.meta.env.VITE_USE_API === "1" ? "Accounts, bookings and messages are stored on this app's server." : "This build stores everything in your browser only; accounts and messages are not shared with other devices."}</p>
       </footer>
     </>
   );

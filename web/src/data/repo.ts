@@ -18,6 +18,7 @@ export interface Repo {
   signUp(a: NewAccount): Promise<User>;
   signIn(email: string, password: string): Promise<User>;
   user(id: string): Promise<User | null>;
+  signOut?(): Promise<void>;
   updateProfile(userId: string, patch: Pick<User, "name" | "city" | "genres" | "blurb">): Promise<User>;
   // notifications and messages
   notifications(userId: string): Promise<Notification[]>;

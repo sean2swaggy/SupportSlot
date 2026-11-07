@@ -24,3 +24,5 @@ supabase/paste-into-sql-editor.sql
 # web companion
 /web/node_modules
 /web/dist
+/web/data
+/web/server/dist

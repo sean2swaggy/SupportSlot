@@ -30,12 +30,15 @@ export function createLocalRepo(opts: Options = {}): Repo & { reset(): void } {
 
   let demoReady: Promise<void> | null = null;
   const ensureDemoAccounts = () => (demoReady ??= (async () => {
+    if (load().accounts.length) return;
+    // hash before touching the db so nothing can interleave between load and save
+    const made = await Promise.all(Object.entries(DEMO_EMAILS).map(async ([userId, email]) => {
+      const salt = newSalt();
+      return { userId, email, salt, hash: await hashPassword(DEMO_PASSWORD, salt) };
+    }));
     const db = load();
     if (db.accounts.length) return;
-    for (const [userId, email] of Object.entries(DEMO_EMAILS)) {
-      const salt = newSalt();
-      db.accounts.push({ userId, email, salt, hash: await hashPassword(DEMO_PASSWORD, salt) });
-    }
+    db.accounts.push(...made);
     save(db);
   })());
 
@@ -100,16 +103,19 @@ export function createLocalRepo(opts: Options = {}): Repo & { reset(): void } {
     // the profile list is cached by the app shell; deliberately not subject to simulated failures
     signUp: async (a: NewAccount) => {
       await gate(); await ensureDemoAccounts();
-      const db = load();
       const email = a.email.trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new RepoError("invalid", "Enter a valid email address.");
       if (a.password.length < 8) throw new RepoError("invalid", "Use a password of at least 8 characters.");
+      if (a.password.length > 200) throw new RepoError("invalid", "That password is too long.");
       if (!a.name.trim()) throw new RepoError("invalid", a.role === "artist" ? "Add your artist or band name." : "Add your promoter name.");
-      if (db.accounts.some((x) => x.email === email)) throw new RepoError("conflict", "There's already an account with that email. Try signing in.");
-      const u: User = { id: newId("u"), role: a.role, name: a.name.trim().slice(0, 80), city: a.city.trim(), genres: a.genres, blurb: a.blurb.trim().slice(0, 300) };
+      if (a.role !== "artist" && a.role !== "promoter") throw new RepoError("invalid", "Choose artist or promoter.");
       const salt = newSalt();
+      const hash = await hashPassword(a.password, salt); // before load: load → check → save below is synchronous
+      const db = load();
+      if (db.accounts.some((x) => x.email === email)) throw new RepoError("conflict", "There's already an account with that email. Try signing in.");
+      const u: User = { id: newId("u"), role: a.role, name: a.name.trim().slice(0, 80), city: a.city.trim().slice(0, 60), genres: a.genres.slice(0, 12), blurb: a.blurb.trim().slice(0, 300) };
       db.users.push(u);
-      db.accounts.push({ userId: u.id, email, salt, hash: await hashPassword(a.password, salt) });
+      db.accounts.push({ userId: u.id, email, salt, hash });
       save(db);
       return u;
     },

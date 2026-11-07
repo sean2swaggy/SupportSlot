@@ -47,7 +47,7 @@ export function SessionProvider({ children, fallback }: { children: ReactNode; f
     user: state.user,
     signIn: async (email, password) => { const user = await repo.signIn(email, password); remember(user.id); setState({ ready: true, user }); return user; },
     signUp: async (a) => { const user = await repo.signUp(a); remember(user.id); setState({ ready: true, user }); return user; },
-    signOut: () => { remember(null); setState({ ready: true, user: null }); },
+    signOut: () => { void repo.signOut?.().catch(() => {}); remember(null); setState({ ready: true, user: null }); },
     setUser: (user) => setState({ ready: true, user }),
   };
   if (!state.ready) return <>{fallback}</>;
