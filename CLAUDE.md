@@ -35,8 +35,9 @@ Both test suites and a clean `build` must pass before calling anything done.
    server state after a write. Never show success before the server said so.
 2. **Money is integer pence**, computed in SQL (`make_offer`) and stored on the
    `bookings` row as a snapshot (`fee_pence` + `travel_pence` only).
-   `Logic/Travel.swift` / `Money` only preview; `tests/db/travel-parity.test.ts`
-   proves they match SQL. The app never sends an amount for an offer.
+   The app shows the DB-computed terms (`terms_preview`) and never sends an
+   amount for an offer. The old Swift-vs-SQL travel parity test was removed
+   because the travel rule now lives only in SQL (`tests/db/uk-locations.test.ts`).
 3. **No invented numbers.** There is no match percentage. `Logic/Fit.swift`
    explains genre/location/size fit from real fields.
 4. **Access is decided in one place per layer.** The database enforces RLS; the

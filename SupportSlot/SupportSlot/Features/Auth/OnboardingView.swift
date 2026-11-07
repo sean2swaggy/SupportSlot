@@ -53,7 +53,11 @@ struct OnboardingView: View {
         .screenBackground()
         .task(id: username) { await checkUsername() }
         .onAppear { restoreDraft() }
-        .onChange(of: draft) { _, new in if restored, let uid = store.userId { OnboardingDraftStore.save(new, userId: uid) } }
+        .onChange(of: draft) { _, new in
+            stepError = nil   // any edit means the old validation message is stale
+            if restored, let uid = store.userId { OnboardingDraftStore.save(new, userId: uid) }
+        }
+        .onChange(of: dob) { _, _ in stepError = nil }
     }
 
     // MARK: Draft (resume after the app is closed)

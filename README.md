@@ -81,7 +81,7 @@ update public.profiles set admin_role = 'admin' where email = 'you@example.com';
 
 | Command | What it does |
 |---|---|
-| `npm test` | Database tests: the real migrations in an in-process Postgres, including the Swift ↔ schema contract and travel-parity checks. No network. |
+| `npm test` | Database tests: the real migrations in an in-process Postgres, including the Swift ↔ schema contract and the UK-location and travel rules. No network. |
 | `xcodebuild … test` (same command, `test` instead of `build`) | Swift unit tests with a faked network. |
 | `node scripts/live-journey.mjs` | Live end-to-end and concurrency check against the project in `.env.local` (synthetic users, cleaned up). |
 | `node scripts/security-regression.mjs` | Live negative tests against the same project. |

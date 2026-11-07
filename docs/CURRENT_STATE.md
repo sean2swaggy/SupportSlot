@@ -1,7 +1,7 @@
-# Support Slot — Current State (7 Oct 2026, branch `app/native-ios`, uncommitted)
+# Support Slot — Current State (7 Nov 2026, branch `app/native-ios`)
 
-## Blocker
-No live Supabase project is configured. `.env.local` and `SupportSlot/Config/Secrets.xcconfig` still point at the RETIRED project (`hbjwrjvdipwknaikvyev`); scripts now refuse it. `.env.local` also holds stale Stripe keys (delete them). Needed: the NEW project URL + anon key (and a service-role key in `.env.local` for the scripts only).
+## Live project
+Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 applied by hand in the SQL editor on 7 Nov 2026). `SupportSlot/Config/Secrets.xcconfig` and `.env.local` point at it. The service-role key in `.env.local` is still the old project's, so the live scripts cannot run until it is replaced. `.env.local` also holds stale Stripe keys (unused; delete them). The test account created during setup was deleted again.
 
 ## Done this session
 - Migrations (run 0001→0005 in order, once each):
@@ -9,15 +9,20 @@ No live Supabase project is configured. `.env.local` and `SupportSlot/Config/Sec
   - 0004 UK-wide locations: six-city CHECKs and `city_distances` removed; country/region/coords; private rounded `artist_locations`; `set_my_location`, `create_venue`, `search_slots` (radius), `search_artists`, `terms_preview`; travel rule = more than 30 straight-line miles OR unknown location ⇒ travel at least £10 (a distance rule, not a journey time — **business rule for you to confirm**); safe upgrade of existing six-city data.
   - 0005: explicit-column `export_my_data`, message `client_id` retry safety.
 - Swift: MapKit place picker (search / current location only on tap / type-in), venue picker + add venue, radius filters, DB-computed travel terms, MFA-first phase order, PKCE email links (implicit tokens refused), aal2 claim check after verify, message retry ids, onboarding drafts, unsaved-listing confirm, Dynamic Type, Reduce Motion, honest deletion wording.
-- Scripts rewritten for the new schema (`live-journey`, `security-regression`, `seed-dev-fixtures`, `lib/live.mjs`): **NOT RUN** (no project).
+- Scripts rewritten for the new schema (`live-journey`, `security-regression`, `seed-dev-fixtures`, `lib/live.mjs`): **NOT RUN** (need the new service-role key).
 
-## Verified (actual results)
-- Local DB tests (real migrations in PGlite): 148 passing (`npm test`); mutation checks showed the aal2/suspension tests fail if those rules are removed.
-- Swift unit tests (stubbed network): 94 passing; app builds for simulator (iPhone 17 — "iPhone 17 Pro" is not installed here).
-- NOT verified: anything live (Supabase Auth, real PKCE links, TOTP, concurrency, deletion removing `auth.users`), signed-in simulator journeys, MapKit results, VoiceOver.
+## Verified (actual results, 7 Nov 2026)
+- `npm test`: 149 database tests passing (real migrations in PGlite).
+- Swift unit tests passing; app builds and launches in the iPhone 17 simulator against the live project.
+- Live project, anon key only: `london_today()` and `search_slots` answer (200, empty list); reading `profiles` anonymously is refused (401), as migration 0003 intends.
+- Web companion (`web/`): 20 tests, type-check and production build pass; `npm run app` runs a shared-data server (sign-up, booking, alerts, messages, restart persistence checked by hand).
+- Not verified: sign-up, email confirmation, TOTP and signed-in iOS screens on the live project; the live scripts; concurrency; VoiceOver. A one-off fix (stale onboarding error banner, photo preview clipping) was checked by eye only.
 
 ## Still to do
-- Docs not yet written: `docs/PERMISSIONS.md` matrix (the tests in `tests/db/session-security.test.ts` encode it), `docs/SETUP.md`, manual checklist; README/CLAUDE.md still mention six cities and `Travel.swift` parity.
-- Supabase dashboard: enable TOTP MFA, redirect URL `supportslot://auth-callback`, confirm PKCE emails.
+- Docs not yet written: `docs/PERMISSIONS.md` matrix (the tests in `tests/db/session-security.test.ts` encode it), `docs/SETUP.md`, manual checklist.
+- Supabase dashboard (not checked): TOTP MFA on, redirect URL `supportslot://auth-callback`, PKCE emails.
 - Unresolved retention decisions (deletion): shared conversations are deleted for both sides; booking snapshots keep names; support requests keep email/message; audit rows kept with actor cleared.
 - Legal text unreviewed; no signing/TestFlight; accessibility audit pending; server cannot prove coordinates are inside UK borders.
+
+## Web companion
+`web/` (Vite + React + a small Node server) is a separate, sample-data-backed web app for the same product. It does not talk to Supabase or the iOS app. See `web/README.md`.

@@ -134,6 +134,7 @@ struct PhotoField: View {
                     if let imageUrl, !imageUrl.isEmpty { RemoteImage(source: imageUrl) } else { Theme.inkRaised; Image(systemName: "photo").foregroundStyle(Theme.paperDim) }
                 }
                 .frame(width: square ? height : height * 1.6, height: height)
+                .clipped()
                 .overlay(Rectangle().stroke(Theme.inkBorder, lineWidth: 1))
                 VStack(alignment: .leading, spacing: 8) {
                     PhotosPicker(selection: $item, matching: .images) {
