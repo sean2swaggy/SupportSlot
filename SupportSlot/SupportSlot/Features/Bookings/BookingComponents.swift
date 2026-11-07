@@ -27,6 +27,7 @@ struct BookingTermsView: View {
                 Text(m).font(Theme.body(15)).foregroundStyle(Theme.paper).padding(.leading, 12)
                     .overlay(alignment: .leading) { Rectangle().fill(Theme.acid).frame(width: 2) }
             }
+            if booking.bookingStatus == .confirmed { BookingExtras(booking: booking) }
         }
     }
 

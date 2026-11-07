@@ -18,6 +18,8 @@ struct MyGigsView: View {
                 }
                 NavigationLink { ListingFormView() } label: { Label("Post a support slot", systemImage: "plus") }.buttonStyle(.appPrimary)
 
+                if store.myListings.isEmpty || booked == 0 { gettingStarted }
+
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     stat("Open listings", openCount)
                     stat("To review", toReview)
@@ -45,6 +47,28 @@ struct MyGigsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: Slot.self) { ApplicantsView(slotId: $0.id) }
         .toolbar { ToolbarItem(placement: .topBarTrailing) { NotificationsButton() } }
+    }
+
+    private var gettingStarted: some View {
+        let steps: [(String, Bool)] = [
+            ("Set up your promoter profile", true),
+            ("Post your first support slot — you’ll add your venue as you go", !store.myListings.isEmpty),
+            ("Review applicants and send an offer", !store.applications.filter { [.offered, .confirmed].contains($0.applicationStatus) }.isEmpty),
+            ("Get a confirmed booking", booked > 0),
+        ]
+        return Card {
+            VStack(alignment: .leading, spacing: 10) {
+                MonoLabel("Getting started")
+                ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: step.1 ? "checkmark.square.fill" : "square").foregroundStyle(step.1 ? Theme.acid : Theme.paperDim)
+                        Text(step.0).font(Theme.body(14)).foregroundStyle(step.1 ? Theme.paperDim : Theme.paper)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityValue(step.1 ? "Done" : "To do")
+                }
+            }
+        }
     }
 
     private func stat(_ label: String, _ value: Int) -> some View {

@@ -6,6 +6,7 @@ struct RootView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var showTour = false
 
     var body: some View {
         @Bindable var store = store
@@ -33,6 +34,16 @@ struct RootView: View {
         .tint(Theme.acid)
         .sheet(isPresented: Binding(get: { store.pendingPasswordReset && store.phase == .ready }, set: { if !$0 { store.pendingPasswordReset = false } })) {
             NavigationStack { SetNewPasswordView(fromEmailLink: true) }.environment(store).interactiveDismissDisabled()
+        }
+        .fullScreenCover(isPresented: $showTour) {
+            WelcomeTourView(role: store.role) {
+                if let uid = store.userId { TourSeen.markSeen(uid) }
+                showTour = false
+            }
+            .preferredColorScheme(.dark)
+        }
+        .onChange(of: store.phase == .ready) { _, ready in
+            if ready, let uid = store.userId, !TourSeen.isSeen(uid), !store.showVerifiedThanks { showTour = true }
         }
         .onOpenURL { url in Task { await store.handle(url: url) } }
         .task { await store.start() }
