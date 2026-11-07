@@ -1,6 +1,6 @@
 # Email templates (Supabase)
 
-The app confirms new accounts with a **6-digit code typed into the app** (works on any device),
+The app confirms new accounts with an **8-digit code typed into the app** (works on any device),
 and still accepts the confirmation link as a fallback. Supabase only puts a code in the email if
 the template contains `{{ .Token }}`.
 
@@ -8,8 +8,8 @@ the template contains `{{ .Token }}`.
 1. **Authentication → Emails → Templates → Confirm signup** (in older dashboards: Authentication → Email Templates).
 2. Subject: `Your Support Slot code: {{ .Token }}`
 3. Body: paste the whole of `supabase/email-templates/confirm-signup.html`, then Save.
-4. **Authentication → Providers → Email**: keep **Confirm email** ON. Leave the email OTP length at 6
-   (the app auto-submits at 6 digits) and the expiry at 3600 seconds or less.
+4. **Authentication → Providers → Email**: keep **Confirm email** ON. Email OTP length is 8 on this project
+   (the app auto-submits at `AuthView.emailCodeLength` = 8; if you change the length in Supabase, change that constant too) and the expiry at 3600 seconds or less.
 
 ## Notes
 - Supabase's built-in email sender is rate-limited (a few emails an hour) and for testing only. Before real

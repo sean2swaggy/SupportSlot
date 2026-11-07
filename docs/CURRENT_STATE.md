@@ -26,7 +26,7 @@ Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 app
 
 ## Welcome flow and email codes (added 7 Nov 2026)
 - Signed-out users now land on a welcome screen (create account / log in / browse) instead of the visitor home.
-- Sign-up is confirmed with a 6-digit code typed into the app (`AuthService.verifyEmailCode`), with the link kept as a fallback; logging in with an unconfirmed email goes to the code screen and sends a fresh code. Needs the email template in `docs/EMAIL_TEMPLATES.md` to be set up in Supabase. Unit-tested; not yet tested end to end against the live project.
+- Sign-up is confirmed with an 8-digit code typed into the app (length must match Supabase's Email OTP length) (`AuthService.verifyEmailCode`), with the link kept as a fallback; logging in with an unconfirmed email goes to the code screen and sends a fresh code. Needs the email template in `docs/EMAIL_TEMPLATES.md` to be set up in Supabase. Unit-tested; not yet tested end to end against the live project.
 
 ## Web companion
 `web/` (Vite + React + a small Node server) is a separate, sample-data-backed web app for the same product. It does not talk to Supabase or the iOS app. See `web/README.md`.

@@ -176,7 +176,7 @@ final class AuthService: @unchecked Sendable {
         PendingAuthFlowStore.save(PendingAuthFlow(kind: .signup, verifier: pkce.verifier, createdAt: Date()), key: flowKey)
     }
 
-    /// Confirms a new account with the 6-digit code from the sign-up email, and
+    /// Confirms a new account with the code from the sign-up email, and
     /// signs the person in. The code is typed into the app, so it works whichever
     /// device the email was opened on. (The Supabase "Confirm signup" email must
     /// include `{{ .Token }}` for the code to be in it; see docs/EMAIL_TEMPLATES.md.)

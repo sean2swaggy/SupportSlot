@@ -5,7 +5,7 @@ apply for support (opening-act) slots, and promoters post listings and choose
 an act.
 
 This repository is a **native iOS app** (SwiftUI, iOS 17+, no third-party
-packages) that talks straight to **Supabase** (Auth with email confirmation by 6-digit code,
+packages) that talks straight to **Supabase** (Auth with email confirmation by a typed code,
 Postgres, row-level security, SQL functions). There is no server of our own; `web/` is a small
 sample-data web companion (see `web/README.md`) with no backend yet.
 

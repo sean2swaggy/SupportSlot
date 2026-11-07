@@ -156,26 +156,31 @@ struct AuthView: View {
         .accessibilityAddTraits(role == r ? .isSelected : [])
     }
 
-    // MARK: Awaiting confirmation (6-digit code)
+    /// How many digits the confirmation email's code has. This must match Supabase →
+    /// Authentication → Sign In / Providers → Email → "Email OTP Length" (currently 8).
+    /// The app submits by itself when this many digits are typed; "Confirm" accepts 6–10.
+    static let emailCodeLength = 8
+
+    // MARK: Awaiting confirmation (emailed code)
 
     private var confirmation: some View {
         VStack(spacing: 18) {
             Image(systemName: "envelope.badge").font(.system(size: 34)).foregroundStyle(Theme.acid).accessibilityHidden(true)
             Text("Enter your code").font(Theme.display(26)).foregroundStyle(Theme.paper)
-            Text("We emailed a 6-digit code to \(address). It can take a minute to arrive, and it may land in spam.")
+            Text("We emailed a \(Self.emailCodeLength)-digit code to \(address). It can take a minute to arrive, and it may land in spam.")
                 .dimBody().multilineTextAlignment(.center)
-            TextField("000000", text: $code)
+            TextField(String(repeating: "0", count: Self.emailCodeLength), text: $code)
                 .keyboardType(.numberPad)
                 .textContentType(.oneTimeCode)
                 .font(Theme.mono(34, weight: .bold)).tracking(8)
                 .multilineTextAlignment(.center)
                 .focused($focus, equals: .code)
                 .fieldStyle(invalid: error != nil)
-                .accessibilityLabel("6-digit confirmation code")
+                .accessibilityLabel("\(Self.emailCodeLength)-digit confirmation code")
                 .onChange(of: code) { _, new in
-                    let digits = String(new.filter(\.isNumber).prefix(8))
+                    let digits = String(new.filter(\.isNumber).prefix(10))
                     if digits != new { code = digits }
-                    if digits.count == 6 { Task { await verify() } }
+                    if digits.count == Self.emailCodeLength { Task { await verify() } }
                 }
             if let resendNote { Banner(kind: .success, text: resendNote) }
             if let error { Banner(kind: .error, text: error) }
@@ -194,7 +199,7 @@ struct AuthView: View {
         guard !verifying else { return }
         error = nil
         let digits = code.filter(\.isNumber)
-        guard digits.count >= 6 else { error = "Enter the 6-digit code from the email."; return }
+        guard digits.count >= 6 else { error = "Enter the code from the email."; return }
         verifying = true
         defer { verifying = false }
         do {
