@@ -30,7 +30,8 @@ SupportSlot/                 Xcode project (SupportSlot.xcodeproj) and sources
   SupportSlot/Features/      Screens by area (Auth, Discover, Promoter, Staff…)
   SupportSlotTests/          XCTest unit tests (stubbed network)
   Config/                    Base.xcconfig, Secrets.example.xcconfig, Info.plist
-supabase/migrations/         0001 schema, 0002 app functions
+supabase/migrations/         0001–0005: schema, app functions, session security, UK locations, data export
+supabase/sql-editor/         the same files, for pasting into the Supabase SQL editor
 tests/db/                    Postgres tests: real migrations in-process (PGlite)
 scripts/                     Live checks and demo-data scripts (Node)
 docs/                        CURRENT_STATE.md and archived planning docs
@@ -39,9 +40,10 @@ docs/                        CURRENT_STATE.md and archived planning docs
 ## Set it up
 
 1. **Create a Supabase project** (a separate one for testing is wise).
-2. Dashboard → SQL Editor: run `supabase/migrations/0001_initial_schema.sql`,
-   then `0002_app_functions.sql`. Each is meant to run once, on an empty
-   project, as one transaction. Future changes go in new numbered files.
+2. Dashboard → SQL Editor: run the five files in `supabase/sql-editor/`
+   (`0001` through `0005`), one at a time, in order, once each, on an empty
+   project (see `supabase/sql-editor/README.txt`). They are exact copies of
+   `supabase/migrations/`. Future changes go in new numbered files.
 3. Dashboard → Authentication → URL Configuration: add the redirect URL
    `supportslot://auth-callback`. Decide whether new accounts must confirm
    their email (Authentication → Providers → Email); the app handles both.

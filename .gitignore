@@ -19,7 +19,6 @@ xcuserdata/
 .DS_Store
 *.pem
 npm-debug.log*
-supabase/paste-into-sql-editor.sql
 
 # web companion
 /web/node_modules
