@@ -2,10 +2,9 @@ import Foundation
 import Observation
 
 /// The app's shared state: who is signed in, their profile and role, and the
-/// data every signed-in screen needs. The database refuses everything except
-/// the sign-in/2FA calls until the session is aal2 (verified second factor),
-/// so the order here is: sign in → authenticator → account status → set-up →
-/// the app. Writes go through `perform`, which always
+/// data every signed-in screen needs. Sign-in is password-only (no second
+/// factor), so the order here is: sign in → account status → set-up → the app.
+/// Writes go through `perform`, which always
 /// re-reads from the server afterwards (success or failure) so the screen shows
 /// the truth rather than a guess. If the first load fails, `phase` is
 /// `.loadFailed` (a retry screen) — never an empty dashboard.
@@ -21,8 +20,6 @@ final class AppStore {
         case needsConfig
         case launching
         case signedOut
-        case mfaSetup
-        case mfaChallenge
         case suspended
         case onboarding
         case ready
@@ -37,12 +34,10 @@ final class AppStore {
     // Session and profile
     private(set) var session: AuthSession?
     private(set) var profile: Profile?
-    /// Who the database says this session is (role, set-up done, suspended). Only available at aal2.
+    /// Who the database says this session is (role, set-up done, suspended).
     private(set) var account: AccountStatus?
     /// The signed-in artist's own private, ~1 km-rounded position (nobody else can read it).
     private(set) var myCoordinate: Coordinate?
-    /// Set when the database insists on a second factor even though our token says otherwise.
-    private var forceChallenge = false
     private(set) var artist: Artist?
     private(set) var promoter: Promoter?
 
@@ -99,9 +94,6 @@ final class AppStore {
     var phase: Phase {
         guard isConfigured else { return .needsConfig }
         guard let session else { return .signedOut }
-        // Second factor first: before aal2 the database serves nothing, so nothing else can be known.
-        if !session.user.hasVerifiedTOTP { return .mfaSetup }
-        if !session.isAAL2 || forceChallenge { return .mfaChallenge }
         guard let account else { return loadError.map(Phase.loadFailed) ?? .launching }
         if account.suspended { return .suspended }
         if !account.hasOnboarded { return .onboarding }
@@ -136,8 +128,6 @@ final class AppStore {
 
     private func sessionChanged(_ new: AuthSession?) {
         let previousUser = session?.user.id
-        // A verified code gives a fresh aal2 token: stop forcing the challenge.
-        if new?.isAAL2 == true, session?.isAAL2 != true { forceChallenge = false }
         session = new
         guard let new else {
             resetSignedInState()
@@ -151,7 +141,7 @@ final class AppStore {
     }
 
     private func resetSignedInState() {
-        profile = nil; account = nil; myCoordinate = nil; forceChallenge = false
+        profile = nil; account = nil; myCoordinate = nil
         artist = nil; promoter = nil
         applications = []; bookings = []; notifications = []; threads = []
         savedSlotIDs = []; myListings = []
@@ -173,15 +163,12 @@ final class AppStore {
     /// Re-reads everything the signed-in screens show. Safe to call often.
     func refresh() async {
         guard isConfigured, let session, !refreshing else { return }
-        // A password-only session can't read anything (the database refuses it); don't try.
-        guard session.isAAL2, session.user.hasVerifiedTOTP else { account = nil; return }
         refreshing = true
         defer { refreshing = false }
         let uid = session.user.id
         do {
             let status = try await db.accountStatus()
             account = status
-            forceChallenge = false
             if status.suspended {
                 // Everything else is refused for a suspended account; show the suspension screen.
                 loadError = nil
@@ -227,12 +214,6 @@ final class AppStore {
             return
         } catch let error as AppError {
             if error == .sessionExpired { await auth.signOut(); return }
-            if error.code == "mfa_required" {
-                // Our token says aal2 but the database disagrees: get fresh claims once, then ask for the code again.
-                _ = try? await auth.refresh()
-                forceChallenge = true
-                return
-            }
             // Keep what we already have on screen; only the very first load is a hard failure.
             loadError = error
         } catch {

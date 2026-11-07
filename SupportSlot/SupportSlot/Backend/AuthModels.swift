@@ -5,7 +5,6 @@ struct AuthFactor: Codable, Equatable {
     let friendlyName: String?
     let factorType: String
     let status: String
-    var isVerifiedTOTP: Bool { factorType == "totp" && status == "verified" }
 }
 
 struct AuthIdentity: Codable, Equatable { let id: String? }
@@ -19,9 +18,6 @@ struct AuthUser: Codable, Equatable {
     let factors: [AuthFactor]?
     let identities: [AuthIdentity]?
     let userMetadata: AuthUserMetadata?
-
-    var hasVerifiedTOTP: Bool { factors?.contains(where: \.isVerifiedTOTP) ?? false }
-    var verifiedTOTPFactorID: String? { factors?.first(where: \.isVerifiedTOTP)?.id }
 }
 
 /// A signed-in session. Persisted in the Keychain.
@@ -31,14 +27,10 @@ struct AuthSession: Codable, Equatable {
     var expiresAt: Date
     var user: AuthUser
 
-    /// "aal1" (password only) or "aal2" (password + authenticator code), read
-    /// from the access token. The app asks for the code until this is aal2.
-    var assuranceLevel: String { JWT.claim("aal", in: accessToken) ?? "aal1" }
-    var isAAL2: Bool { assuranceLevel == "aal2" }
     var needsRefresh: Bool { expiresAt.timeIntervalSinceNow < 60 }
 }
 
-/// What GoTrue returns from sign-in, token refresh and MFA verify.
+/// What GoTrue returns from sign-in, token refresh and email-code verification.
 struct TokenResponse: Decodable {
     let accessToken: String
     let refreshToken: String
@@ -69,12 +61,6 @@ enum JWT {
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         return obj
     }
-}
-
-struct TOTPEnrollment: Equatable {
-    let factorID: String
-    let secret: String
-    let otpauthURI: String
 }
 
 enum SignUpOutcome: Equatable {

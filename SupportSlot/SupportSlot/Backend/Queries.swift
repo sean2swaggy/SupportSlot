@@ -6,7 +6,7 @@ import Foundation
 extension Database {
     // MARK: Profiles
 
-    /// Role, set-up and suspension for the signed-in account (aal2 only; works while suspended).
+    /// Role, set-up and suspension for the signed-in account (works while suspended).
     func accountStatus() async throws -> AccountStatus {
         let rows: [AccountStatus] = try await rpc("my_account_status", [:])
         guard let row = rows.first else { throw AppError.sessionExpired }

@@ -329,17 +329,17 @@ describe("data export", () => {
     expect(JSON.stringify((theirs as { artist: unknown }).artist)).toBe("null");
   });
 
-  it("is refused without a verified second factor, and for visitors", async () => {
+  it("works for any signed-in user, and is refused for visitors", async () => {
     const artist = await makeArtist(db);
-    await expect(asUser(db, artist, (tx) => tx.query(`select public.export_my_data()`), { aal: "aal1" })).rejects.toThrow(/mfa_required/);
+    expect((await asUser(db, artist, (tx) => tx.query(`select public.export_my_data()`), { aal: "aal1" })).rows).toHaveLength(1);
     await expect(asAnon(db, (tx) => tx.query(`select public.export_my_data()`))).rejects.toThrow(/permission denied/);
   });
 });
 
 describe("account deletion", () => {
-  it("needs aal2, writes nothing on refusal, removes the login, and leaves staff audit rows with the actor cleared (not deleted)", async () => {
+  it("refuses visitors, removes the login, and leaves staff audit rows with the actor cleared (not deleted)", async () => {
     const artist = await makeArtist(db);
-    await expect(asUser(db, artist, (tx) => tx.query(`select public.delete_my_account()`), { aal: "aal1" })).rejects.toThrow(/mfa_required/);
+    await expect(asAnon(db, (tx) => tx.query(`select public.delete_my_account()`))).rejects.toThrow(/permission denied/);
     expect(await count(`select 1 from auth.users where id = '${artist}'`)).toBe(1);
 
     const mod = await makePromoter(db);

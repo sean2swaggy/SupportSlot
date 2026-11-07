@@ -5,7 +5,7 @@ apply for support (opening-act) slots, and promoters post listings and choose
 an act.
 
 This repository is a **native iOS app** (SwiftUI, iOS 17+, no third-party
-packages) that talks straight to **Supabase** (Auth with mandatory TOTP 2FA,
+packages) that talks straight to **Supabase** (Auth with email confirmation by 6-digit code,
 Postgres, row-level security, SQL functions). There is no server of our own; `web/` is a small
 sample-data web companion (see `web/README.md`) with no backend yet.
 
@@ -30,7 +30,7 @@ SupportSlot/                 Xcode project (SupportSlot.xcodeproj) and sources
   SupportSlot/Features/      Screens by area (Auth, Discover, Promoter, Staff…)
   SupportSlotTests/          XCTest unit tests (stubbed network)
   Config/                    Base.xcconfig, Secrets.example.xcconfig, Info.plist
-supabase/migrations/         0001–0006: schema, app functions, session security, UK locations, data export, function search paths
+supabase/migrations/         0001–0007: schema, app functions, session security, UK locations, data export, function search paths, password-only sign-in
 supabase/sql-editor/         the same files, for pasting into the Supabase SQL editor
 tests/db/                    Postgres tests: real migrations in-process (PGlite)
 scripts/                     Live checks and demo-data scripts (Node)
@@ -40,8 +40,8 @@ docs/                        CURRENT_STATE.md and archived planning docs
 ## Set it up
 
 1. **Create a Supabase project** (a separate one for testing is wise).
-2. Dashboard → SQL Editor: run the six files in `supabase/sql-editor/`
-   (`0001` through `0006`), one at a time, in order, once each, on an empty
+2. Dashboard → SQL Editor: run the seven files in `supabase/sql-editor/`
+   (`0001` through `0007`), one at a time, in order, once each, on an empty
    project (see `supabase/sql-editor/README.txt`). They are exact copies of
    `supabase/migrations/`. Future changes go in new numbered files.
 3. Dashboard → Authentication → URL Configuration: add the redirect URL
@@ -96,8 +96,7 @@ Creates clearly fictional accounts (artists, promoters, an admin), listings in
 every state, applications at every stage, offers, a confirmed booking,
 conversations, saved gigs and a report — through the real SQL functions.
 Re-running adds nothing twice; `--reset` removes the fixture rows. Logins and
-authenticator secrets go to `.dev-fixtures/` (gitignored); get a 2FA code with
-`node scripts/totp.mjs artist`.
+passwords go to `.dev-fixtures/` (gitignored).
 
 ## How the states work
 

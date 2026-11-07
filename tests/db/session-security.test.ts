@@ -2,10 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asAnon, asService, asUser, createTestDb, makeArtist, makePromoter, makeSlot, signUp, type Db } from "./harness";
 
 // The permission matrix (docs/PERMISSIONS.md), proved against the real
-// migrations: public visitor / password-only (aal1) / verified second factor
-// (aal2) / suspended / staff. "Real Supabase" sessions are modelled by the JWT
-// claims Postgres sees (sub, role, aal) — the same source auth.uid() and
-// auth.jwt() read in production.
+// migrations: public visitor / signed-in user / suspended / staff. Sign-in is
+// password-only (migration 0007 removed the two-factor requirement), so the
+// `aal` claim in the JWT is ignored. "Real Supabase" sessions are modelled by
+// the JWT claims Postgres sees (sub, role): the same source auth.uid() reads.
 
 let db: Db;
 beforeAll(async () => {
@@ -15,128 +15,72 @@ afterAll(async () => db.close());
 
 const AAL1 = { aal: "aal1" as const };
 
-describe("every table is behind the aal2 + not-suspended policy", () => {
+describe("every table is behind the signed-in + not-suspended policy", () => {
   it("has row-level security and the restrictive policy on all public tables", async () => {
-    const r = await db.query<{ tablename: string; rls: boolean; has_policy: boolean }>(`
+    const r = await db.query<{ tablename: string; rls: boolean; has_policy: boolean; old_policy: boolean }>(`
       select t.tablename, c.relrowsecurity as rls,
              exists (select 1 from pg_policies p where p.schemaname = 'public' and p.tablename = t.tablename
-                     and p.policyname = 'aal2_active_session_required' and p.permissive = 'RESTRICTIVE') as has_policy
+                     and p.policyname = 'active_session_required' and p.permissive = 'RESTRICTIVE') as has_policy,
+             exists (select 1 from pg_policies p where p.schemaname = 'public' and p.tablename = t.tablename
+                     and p.policyname = 'aal2_active_session_required') as old_policy
       from pg_tables t join pg_class c on c.relname = t.tablename and c.relnamespace = 'public'::regnamespace
       where t.schemaname = 'public' order by 1`);
     expect(r.rows.length).toBeGreaterThan(20);
-    expect(r.rows.filter((x) => !x.rls || !x.has_policy)).toEqual([]);
+    expect(r.rows.filter((x) => !x.rls || !x.has_policy || x.old_policy)).toEqual([]);
   });
 });
 
-describe("password-only (aal1) sessions get nothing from the data API", () => {
-  it("cannot read their own private rows, nor public tables with the user token", async () => {
+describe("two-factor is not required: the aal claim makes no difference", () => {
+  it("a password-only session reads and writes its own data exactly like any signed-in session", async () => {
+    const artist = await makeArtist(db);
+    const promoter = await makePromoter(db);
+    const slot = await makeSlot(db, promoter);
+    await asUser(db, artist, (tx) => tx.query(`insert into public.applications (slot_id, artist_id) values ($1, $2)`, [slot, artist]), AAL1);
+    const count = async (who: string, table: string, aal: "aal1" | "aal2") =>
+      (await asUser(db, who, (tx) => tx.query(`select 1 from public.${table}`), { aal })).rows.length;
+    expect(await count(artist, "profiles", "aal1")).toBe(await count(artist, "profiles", "aal2"));
+    expect(await count(artist, "applications", "aal1")).toBe(1);
+    expect(await count(artist, "applications", "aal2")).toBe(1);
+    const r = await asUser(db, artist, (tx) => tx.query(`select * from public.my_account_status()`), AAL1);
+    expect(r.rows).toHaveLength(1);
+  });
+
+  it("visitors who are not signed in still get nothing private, and cannot write", async () => {
     const artist = await makeArtist(db);
     const promoter = await makePromoter(db);
     const slot = await makeSlot(db, promoter);
     await asUser(db, artist, (tx) => tx.query(`insert into public.applications (slot_id, artist_id) values ($1, $2)`, [slot, artist]));
-
-    const count = async (who: string, table: string, aal: "aal1" | "aal2") =>
-      (await asUser(db, who, (tx) => tx.query(`select 1 from public.${table}`), { aal })).rows.length;
-
-    expect(await count(artist, "profiles", "aal2")).toBe(1);
-    expect(await count(artist, "profiles", "aal1")).toBe(0);
-    expect(await count(artist, "applications", "aal2")).toBe(1);
-    expect(await count(artist, "applications", "aal1")).toBe(0);
-    expect(await count(promoter, "applications", "aal1")).toBe(0);
-    expect(await count(artist, "slots", "aal1")).toBe(0); // public data is reached with the anon key, not a half-authenticated session
+    await expect(asAnon(db, (tx) => tx.query(`select 1 from public.applications`))).rejects.toThrow(/permission denied/);
+    await expect(asAnon(db, (tx) => tx.query(`select 1 from public.profiles`))).rejects.toThrow(/permission denied/);
+    await expect(asAnon(db, (tx) => tx.query(`insert into public.applications (slot_id, artist_id) values ($1, $2)`, [slot, artist]))).rejects.toThrow(/permission denied/);
+    await expect(asAnon(db, (tx) => tx.query(`select * from public.my_account_status()`))).rejects.toThrow(/permission denied/);
   });
 
-  it("cannot write: inserts and updates are refused by row-level security", async () => {
-    const artist = await makeArtist(db);
-    const promoter = await makePromoter(db);
-    const slot = await makeSlot(db, promoter);
-    await expect(
-      asUser(db, artist, (tx) => tx.query(`insert into public.applications (slot_id, artist_id) values ($1, $2)`, [slot, artist]), { aal: "aal1" })
-    ).rejects.toThrow(/row-level security/);
-    const upd = await asUser(db, artist, (tx) => tx.query(`update public.artists set bio = 'hacked' where id = $1`, [artist]), AAL1);
-    expect(upd.affectedRows).toBe(0);
-    const bio = await db.query<{ bio: string }>(`select bio from public.artists where id = $1`, [artist]);
-    expect(bio.rows[0].bio).not.toBe("hacked");
-  });
-
-  it("is refused by every callable function except the public ones", async () => {
+  it("can still contact support, and a signed-in user may leave out an email address", async () => {
     const user = await makeArtist(db);
-    const fns = await db.query<{ sig: string; name: string; nargs: number; argtypes: string; kind: string; rettype: string }>(`
-      select p.oid::regprocedure::text as sig, p.proname as name, p.pronargs as nargs,
-             pg_get_function_identity_arguments(p.oid) as argtypes, p.prokind as kind, format_type(p.prorettype, null) as rettype
-      from pg_proc p where p.pronamespace = 'public'::regnamespace
-        and has_function_privilege('authenticated', p.oid, 'execute')
-        and p.prorettype <> 'trigger'::regtype`);
-    expect(fns.rows.length).toBeGreaterThan(40);
-
-    // Safe to call from any session: pure maths, or answer "no" without a session.
-    const PURE = new Set(["haversine_miles", "london_today", "long_journey_miles", "minimum_long_journey_travel_pence", "_check_place"]);
-    const SEARCH = new Set(["search_slots"]); // public by design
-    const ANSWERS_FALSE = new Set([
-      "session_is_active", "session_is_aal2", "caller_is_promoter", "is_open_availability_request",
-      "is_recipient_of_availability_request", "owns_availability_request", "owns_schedule_template", "owns_show_schedule",
-    ]);
-    const ANSWERS_NULL = new Set(["current_admin_role"]);
-    const PUBLIC_WITH_OWN_RULES = new Set(["submit_support_request"]); // treats aal1 as anonymous
-
-    const offenders: string[] = [];
-    for (const f of fns.rows) {
-      if (PURE.has(f.name) || SEARCH.has(f.name) || PUBLIC_WITH_OWN_RULES.has(f.name)) continue;
-      const args = f.nargs === 0 ? "" : Array.from({ length: f.nargs }, () => "null").join(", ");
-      // `null` for every argument; the session check must come before anything else.
-      const outcome = await asUser(db, user, async (tx) => {
-        try {
-          const r = await tx.query<{ v: unknown }>(`select * from public.${f.name}(${args}) as v`);
-          return { ok: true as const, rows: r.rows };
-        } catch (e) {
-          return { ok: false as const, message: (e as Error).message };
-        }
-      }, AAL1);
-      if (ANSWERS_NULL.has(f.name)) {
-        if (!outcome.ok || Object.values(outcome.rows[0] ?? {}).some((v) => v !== null)) offenders.push(`${f.sig} should answer null`);
-        continue;
-      }
-      if (ANSWERS_FALSE.has(f.name)) {
-        if (!outcome.ok || JSON.stringify(outcome.rows).includes("true")) offenders.push(`${f.sig} should answer false`);
-        continue;
-      }
-      if (outcome.ok) offenders.push(`${f.sig} ran for an aal1 session`);
-      else if (!/mfa_required|not_authenticated|permission denied/.test(outcome.message)) offenders.push(`${f.sig}: ${outcome.message}`);
-    }
-    expect(offenders).toEqual([]);
-  });
-
-  it("can still contact support (as if anonymous: it must give an address)", async () => {
-    const user = await makeArtist(db);
-    await expect(
-      asUser(db, user, (tx) => tx.query(`select public.submit_support_request('account', 'I lost my authenticator device', null)`), AAL1)
-    ).rejects.toThrow(/reply to/);
-    const r = await asUser(db, user, (tx) => tx.query(`select public.submit_support_request('account', 'I lost my authenticator device', 'me@example.test')`), AAL1);
+    const r = await asUser(db, user, (tx) => tx.query(`select public.submit_support_request('account', 'I need some help please', null)`), AAL1);
     expect(r.rows).toHaveLength(1);
   });
 
-  it("cannot reach staff functions even if the account is staff", async () => {
+  it("staff functions need a staff account, not a second factor", async () => {
     const p = await makePromoter(db);
+    await expect(asUser(db, p, (tx) => tx.query(`select * from public.staff_audit_log(10)`), AAL1)).rejects.toThrow(/not_authorized/);
     await asService(db, (tx) => tx.query(`update public.profiles set admin_role = 'admin' where id = $1`, [p]));
-    await expect(asUser(db, p, (tx) => tx.query(`select * from public.staff_audit_log(10)`), AAL1)).rejects.toThrow(/mfa_required/);
-    expect((await asUser(db, p, (tx) => tx.query(`select * from public.staff_audit_log(10)`))).rows).toBeDefined();
+    expect((await asUser(db, p, (tx) => tx.query(`select * from public.staff_audit_log(10)`), AAL1)).rows).toBeDefined();
   });
 });
 
 describe("the claims are the only source of truth", () => {
-  it("a client cannot grant itself aal2, another identity or a role by anything it sends", async () => {
+  it("a client cannot become another identity or staff by anything it sends", async () => {
     const artist = await makeArtist(db);
     const victim = await makeArtist(db);
+    const promoter = await makePromoter(db);
+    const slot = await makeSlot(db, promoter);
     // Payload tricks: user_metadata / app_metadata claims named like authority don't count.
-    const r = await asUser(db, artist, (tx) => tx.query(`select 1 from public.profiles`), {
-      aal: "aal1", extraClaims: { user_metadata: { aal: "aal2", role: "service_role" }, app_metadata: { admin_role: "admin" } },
-    });
-    expect(r.rows).toHaveLength(0);
-    // aal2 as artist doesn't let you act as someone else.
-    const apps = await makePromoter(db);
-    const slot = await makeSlot(db, apps);
+    const tricks = { aal: "aal1" as const, extraClaims: { user_metadata: { aal: "aal2", role: "service_role", admin_role: "admin" }, app_metadata: { admin_role: "admin" } } };
+    await expect(asUser(db, artist, (tx) => tx.query(`select * from public.staff_audit_log(10)`), tricks)).rejects.toThrow(/not_authorized/);
     await expect(
-      asUser(db, artist, (tx) => tx.query(`insert into public.applications (slot_id, artist_id) values ($1, $2)`, [slot, victim]))
+      asUser(db, artist, (tx) => tx.query(`insert into public.applications (slot_id, artist_id) values ($1, $2)`, [slot, victim]), tricks)
     ).rejects.toThrow(/row-level security/);
   });
 
@@ -157,7 +101,7 @@ describe("suspension is enforced in SQL, including for sessions issued earlier",
     const artist = await makeArtist(db);
     const promoter = await makePromoter(db);
     const slot = await makeSlot(db, promoter);
-    // Same long-lived aal2 session before and after.
+    // Same long-lived session before and after.
     expect((await asUser(db, artist, (tx) => tx.query(`select 1 from public.profiles`))).rows).toHaveLength(1);
     await asService(db, (tx) => tx.query(`update public.profiles set suspended_at = now(), suspension_reason = 'test' where id = $1`, [artist]));
 

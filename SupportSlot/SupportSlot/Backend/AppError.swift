@@ -33,7 +33,6 @@ struct AppError: Error, LocalizedError, Equatable {
 enum ErrorMapper {
     private static let messages: [(pattern: String, text: String, options: NSRegularExpression.Options)] = [
         ("not_authenticated", "Your session has expired. Please log in again.", []),
-        ("mfa_required", "Please enter the code from your authenticator app to continue.", []),
         ("location_invalid", "That location isn't valid. Choose a place from the search, or type in a town and nation.", []),
         ("venue_invalid|profile_required", "That venue or profile isn't complete.", []),
         ("account_suspended", "This account is suspended, so that action isn't available. Contact support if you think that's a mistake.", []),

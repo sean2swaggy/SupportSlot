@@ -3,20 +3,20 @@
 //
 // Runs the real marketplace journey against the Supabase TEST project in
 // .env.local with SYNTHETIC accounts, through real signed-in sessions that have
-// completed the real second factor (so the aal2 row-level security, the SQL
-// functions and the grants are exercised exactly as the app uses them). It sends
+// signed in with a password (so the row-level security, the SQL functions and
+// the grants are exercised exactly as the app uses them). It sends
 // no email (accounts are created with the admin API) and everything it creates
 // is removed in `finally`.
 //
 // What it adds over the in-process Postgres tests (tests/db): REAL parallel
 // connections — two artists accepting the same slot at the same instant, five
 // simultaneous duplicate applications — which a single-connection test can't
-// prove; and the real Auth server's tokens (aal1 vs aal2, a session that
-// outlives a suspension, the aal claim after enrol/verify), which PGlite can't.
+// prove; and the real Auth server's tokens (a session that
+// outlives a suspension), which PGlite can't.
 //
 //   LIVE_CONFIRM_PROJECT_REF=<ref> node scripts/live-journey.mjs
 //
-// Requires migrations 0001–0005 applied. Exit code 0 only if all checks pass.
+// Requires migrations 0001–0007 applied. Exit code 0 only if all checks pass.
 // STATUS: written against the new schema but NOT YET RUN — there is no live
 // project to run it on (see docs/CURRENT_STATE.md).
 
@@ -42,7 +42,7 @@ function check(name, pass, detail = "") {
 }
 const errText = (e) => (e ? e.message : "no error");
 
-async function person(role, label, { place = PLACES.london, stopAtAal1 = false } = {}) {
+async function person(role, label, { place = PLACES.london } = {}) {
   const email = `journey-${label}-${RUN}@example.com`;
   const { data, error } = await admin.auth.admin.createUser({ email, password: PASSWORD, email_confirm: true, user_metadata: { role } });
   if (error) throw new Error(`createUser ${label}: ${error.message}`);
@@ -66,8 +66,7 @@ async function person(role, label, { place = PLACES.london, stopAtAal1 = false }
   const client = anonClient(env);
   const { error: signInError } = await client.auth.signInWithPassword({ email, password: PASSWORD });
   if (signInError) throw new Error(`sign in ${label}: ${signInError.message}`);
-  const secret = stopAtAal1 ? null : await reachAal2(client);
-  return { id, client, email, secret };
+  return { id, client, email };
 }
 
 async function main() {
@@ -77,29 +76,20 @@ async function main() {
   const artistB = await person("artist", "b", { place: PLACES.manchester });
   const artistC = await person("artist", "c", { place: PLACES.edinburgh });
 
-  check("After enrol + verify the session token really says aal2", (await aalOf(artistA.client)) === "aal2", await aalOf(artistA.client));
-
-  // --- The 2FA gap is closed at the API --------------------------------------
+  // --- A password-only session is a normal session ---------------------------
   {
-    const half = await person("artist", "half", { stopAtAal1: true });
-    check("A password-only session holds an aal1 token", (await aalOf(half.client)) === "aal1");
-    const token = await accessTokenOf(half.client);
-    const own = await rest(env, token, `profiles?id=eq.${half.id}&select=id`);
-    check("…and the REST API returns none of its own profile rows", own.status === 200 && Array.isArray(own.body) && own.body.length === 0, `${own.status} ${JSON.stringify(own.body).slice(0, 80)}`);
-    const apps = await rest(env, token, "applications?select=id");
-    check("…nor applications", apps.status === 200 && apps.body.length === 0, `${apps.status}`);
-    const write = await rest(env, token, "artists", { method: "POST", body: JSON.stringify({ id: half.id, handle: `half-${RUN}`, name: "x", location: "London", location_country: "England" }) });
-    check("…and cannot create an artist profile", write.status >= 400, `${write.status}`);
+    const solo = await person("artist", "solo");
+    const token = await accessTokenOf(solo.client);
+    const own = await rest(env, token, `profiles?id=eq.${solo.id}&select=id`);
+    check("A password-only session reads its own profile", own.status === 200 && Array.isArray(own.body) && own.body.length === 1, `${own.status} ${JSON.stringify(own.body).slice(0, 80)}`);
     const fn = await rest(env, token, "rpc/my_account_status", { method: "POST", body: "{}" });
-    check("…and my_account_status refuses it (mfa_required)", fn.status >= 400 && /mfa_required/.test(JSON.stringify(fn.body)), JSON.stringify(fn.body).slice(0, 100));
-    const exp = await rest(env, token, "rpc/export_my_data", { method: "POST", body: "{}" });
-    check("…and export_my_data refuses it", exp.status >= 400, `${exp.status}`);
+    check("…and my_account_status answers", fn.status === 200, `${fn.status}`);
+    const spoof = await rest(env, token, "applications", { method: "POST", body: JSON.stringify({ slot_id: "00000000-0000-0000-0000-000000000000", artist_id: artistB.id }) });
+    check("…but cannot act as someone else", spoof.status >= 400, `${spoof.status}`);
     const pub = await rest(env, null, "slots?select=id&limit=1");
-    check("The public (anon) listings are still readable", pub.status === 200);
-    const verifyFirst = await reachAal2(half.client);
-    check("After the second factor the same user is aal2 and can read its profile", (await aalOf(half.client)) === "aal2" && !!verifyFirst);
-    const now = await rest(env, await accessTokenOf(half.client), `profiles?id=eq.${half.id}&select=id`);
-    check("…and the REST API now returns it", Array.isArray(now.body) && now.body.length === 1, JSON.stringify(now.body).slice(0, 80));
+    check("The public (anon) listings are readable without signing in", pub.status === 200);
+    const anonProfile = await rest(env, null, "profiles?select=id&limit=1");
+    check("…but a visitor cannot read private profile rows", anonProfile.status >= 400 || (Array.isArray(anonProfile.body) && anonProfile.body.length === 0), `${anonProfile.status}`);
   }
 
   // --- A venue anywhere in the UK, and a listing there ------------------------------------

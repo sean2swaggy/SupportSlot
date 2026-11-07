@@ -11,13 +11,10 @@
 //     @example.com addresses (a reserved domain with no mailboxes).
 //   * Leaking the service-role key: it is read from .env.local, used only by
 //     these Node scripts, and never written anywhere else.
-//   * Weakening 2FA: users are put through the REAL second factor (TOTP enrol,
-//     challenge, verify), so every call these scripts make carries an aal2
-//     token exactly like the app's.
+//   * (Sign-in is password-only now; there is no second factor to go through.)
 
 import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
-import { totp } from "./totp.mjs";
 
 /** Projects that must never be used again. */
 export const RETIRED_PROJECT_REFS = ["hbjwrjvdipwknaikvyev"];
@@ -71,28 +68,11 @@ export function must(res, what) {
 }
 
 /**
- * Runs the real two-factor steps on a client that is already signed in
- * (aal1) and leaves it at aal2. Returns the authenticator secret so the same
- * account can be used again. TOTP codes are only valid for their 30 s window;
- * if a code lands on a boundary the next window is tried.
+ * Sign-in is password-only, so there is no second factor to complete. Kept as a
+ * no-op so the scripts read the same; returns null (there is no secret).
  */
-export async function reachAal2(client, secret) {
-  let factorId;
-  if (!secret) {
-    const enrol = must(await client.auth.mfa.enroll({ factorType: "totp", friendlyName: "Automated check" }), "mfa enrol");
-    factorId = enrol.id;
-    secret = enrol.totp.secret;
-  } else {
-    const { data } = await client.auth.mfa.listFactors();
-    factorId = data?.totp?.find((f) => f.status === "verified")?.id;
-    if (!factorId) throw new Error("account has a secret but no verified factor");
-  }
-  for (const at of [Date.now(), Date.now() + 30_000]) {
-    const ch = must(await client.auth.mfa.challenge({ factorId }), "mfa challenge");
-    const res = await client.auth.mfa.verify({ factorId, challengeId: ch.id, code: totp(secret, at) });
-    if (!res.error) return secret;
-  }
-  throw new Error("mfa verify failed twice");
+export async function reachAal2(_client, _secret) {
+  return null;
 }
 
 /** Reads the `aal` claim of a supabase-js client's current access token. */

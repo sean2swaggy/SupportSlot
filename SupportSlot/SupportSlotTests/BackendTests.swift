@@ -90,11 +90,8 @@ final class ErrorMapperTests: XCTestCase {
 }
 
 final class JWTTests: XCTestCase {
-    func testReadsAssuranceLevel() {
-        let aal1 = AuthSession(accessToken: TestSupport.token(aal: "aal1"), refreshToken: "r", expiresAt: .now.addingTimeInterval(3600), user: AuthUser(id: "u", email: nil, emailConfirmedAt: nil, factors: nil, identities: nil, userMetadata: nil))
-        XCTAssertFalse(aal1.isAAL2)
-        var aal2 = aal1; aal2.accessToken = TestSupport.token(aal: "aal2")
-        XCTAssertTrue(aal2.isAAL2)
+    func testReadsAClaimFromAToken() {
+        XCTAssertEqual(JWT.claim("aal", in: TestSupport.token(aal: "aal1")), "aal1")
         XCTAssertNil(JWT.claim("aal", in: "garbage"))
     }
 }
@@ -322,45 +319,8 @@ final class AuthServiceTests: XCTestCase {
         if case .failed = kind {} else { XCTFail() }
     }
 
-    func testMFAVerifyRefusesATokenThatIsNotReallyAal2() async throws {
-        let auth = makeAuth()
-        StubURLProtocol.reset { _ in .json(TestSupport.tokenJSON(factors: [["id": "f1", "factor_type": "totp", "status": "verified"]])) }
-        try await auth.signIn(email: "a@example.com", password: "pw-123456")
-        StubURLProtocol.reset { req in
-            if req.url!.path.hasSuffix("/challenge") { return .json(["id": "ch1", "expires_at": 1_900_000_000]) }
-            return .json(TestSupport.tokenJSON(access: TestSupport.token(aal: "aal1"), refresh: "still-aal1"))
-        }
-        do { try await auth.verifyTOTP(factorID: "f1", code: "123456"); XCTFail("an aal1 token must not count as verified") } catch {}
-        XCTAssertFalse(auth.session!.isAAL2)
-    }
 
-    func testMFAVerifyUpgradesTheSession() async throws {
-        let auth = makeAuth()
-        StubURLProtocol.reset { _ in .json(TestSupport.tokenJSON(factors: [["id": "f1", "factor_type": "totp", "status": "verified"]])) }
-        try await auth.signIn(email: "a@example.com", password: "pw-123456")
-        XCTAssertFalse(auth.session!.isAAL2)
-        XCTAssertEqual(auth.session!.user.verifiedTOTPFactorID, "f1")
-        StubURLProtocol.reset { req in
-            if req.url!.path.hasSuffix("/challenge") { return .json(["id": "ch1", "expires_at": 1_900_000_000]) }
-            return .json(TestSupport.tokenJSON(access: TestSupport.token(aal: "aal2"), refresh: "refresh-aal2"))
-        }
-        try await auth.verifyTOTP(factorID: "f1", code: "123456")
-        XCTAssertTrue(auth.session!.isAAL2)
-        let verify = StubURLProtocol.recorded[1]
-        XCTAssertEqual(verify.url?.path, "/auth/v1/factors/f1/verify")
-        XCTAssertTrue(String(data: verify.httpBody ?? Data(), encoding: .utf8)!.contains("\"challenge_id\":\"ch1\""))
-    }
 
-    func testWrongAuthenticatorCodeIsExplained() async throws {
-        let auth = makeAuth()
-        StubURLProtocol.reset { _ in .json(TestSupport.tokenJSON()) }
-        try await auth.signIn(email: "a@example.com", password: "pw-123456")
-        StubURLProtocol.reset { req in
-            req.url!.path.hasSuffix("/challenge") ? .json(["id": "ch1"]) : .json(["error_code": "mfa_verification_failed", "msg": "Invalid TOTP code entered"], status: 400)
-        }
-        do { try await auth.verifyTOTP(factorID: "f1", code: "000000"); XCTFail() }
-        catch { XCTAssertTrue((error as? AppError)?.message.contains("code isn't right") ?? false) }
-    }
 }
 
 final class DatabaseTests: XCTestCase {

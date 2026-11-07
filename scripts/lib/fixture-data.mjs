@@ -6,7 +6,7 @@ export const DOMAIN = "example.com";
 const img = (seed, w = 600, h = 600) => `https://picsum.photos/seed/${seed}/${w}/${h}`;
 const demo = (path) => `https://example.com/demo/${path}`;
 
-// login: true  → gets a known password and an enrolled authenticator.
+// login: true  → gets a known password.
 export const PEOPLE = [
   {
     key: "artist1", login: true, role: "artist", email: `demo-artist@${DOMAIN}`, username: "demo_mara_quill",

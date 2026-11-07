@@ -41,8 +41,8 @@ struct OnboardingView: View {
                     if let stepError { Banner(kind: .error, text: stepError) }
                     if let submitError { Banner(kind: .error, text: submitError) }
                     nav
-                    Button("Log out") { Task { await store.signOut() } }
-                        .font(Theme.mono(10)).textCase(.uppercase).foregroundStyle(Theme.paperDim).frame(maxWidth: .infinity)
+                    Button { Task { await store.signOut() } } label: { Label("Log out", systemImage: "rectangle.portrait.and.arrow.right") }
+                        .buttonStyle(.app(.outline, compact: true)).frame(maxWidth: .infinity)
                 }
             }
             .padding(24)
@@ -166,7 +166,7 @@ struct OnboardingView: View {
     private var promoterFinishStep: some View {
         VStack(alignment: .leading, spacing: 18) {
             heading("You’re almost done", "Verification badges are added once we confirm your venue or promotion history.")
-            Card { Text("Next you’ll set up two-factor authentication to keep your account safe.").dimBody(14) }
+            Card { Text("That’s everything. Finish to start using Support Slot.").dimBody(14) }
         }
     }
 

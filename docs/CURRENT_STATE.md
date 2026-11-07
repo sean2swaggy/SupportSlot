@@ -1,7 +1,7 @@
 # Support Slot — Current State (7 Nov 2026, branch `app/native-ios`)
 
 ## Live project
-Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 applied by hand in the SQL editor, and 0006 applied through the Supabase connection, on 7 Nov 2026). `SupportSlot/Config/Secrets.xcconfig` and `.env.local` point at it. The service-role key in `.env.local` is still the old project's, so the live scripts cannot run until it is replaced. `.env.local` also holds stale Stripe keys (unused; delete them). The test account created during setup was deleted again.
+Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 applied by hand in the SQL editor; 0006 and 0007 applied through the Supabase connection, on 7 Nov 2026). `SupportSlot/Config/Secrets.xcconfig` and `.env.local` point at it. The service-role key in `.env.local` is still the old project's, so the live scripts cannot run until it is replaced. `.env.local` also holds stale Stripe keys (unused; delete them). The test account created during setup was deleted again.
 
 ## Done this session
 - Migrations (run 0001→0005 in order, once each):
@@ -12,15 +12,15 @@ Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 app
 - Scripts rewritten for the new schema (`live-journey`, `security-regression`, `seed-dev-fixtures`, `lib/live.mjs`): **NOT RUN** (need the new service-role key).
 
 ## Verified (actual results, 7 Nov 2026)
-- `npm test`: 151 database tests passing (real migrations in PGlite).
+- `npm test`: 150 database tests passing (real migrations in PGlite).
 - Swift unit tests passing; app builds and launches in the iPhone 17 simulator against the live project.
 - Live project, anon key only: `london_today()` and `search_slots` answer (200, empty list); reading `profiles` anonymously is refused (401), as migration 0003 intends.
 - Web companion (`web/`): 20 tests, type-check and production build pass; `npm run app` runs a shared-data server (sign-up, booking, alerts, messages, restart persistence checked by hand).
-- Not verified: sign-up, email confirmation, TOTP and signed-in iOS screens on the live project; the live scripts; concurrency; VoiceOver. A one-off fix (stale onboarding error banner, photo preview clipping) was checked by eye only.
+- Not verified: sign-up, email confirmation, and signed-in iOS screens on the live project; the live scripts; concurrency; VoiceOver. A one-off fix (stale onboarding error banner, photo preview clipping) was checked by eye only.
 
 ## Still to do
 - Docs not yet written: `docs/PERMISSIONS.md` matrix (the tests in `tests/db/session-security.test.ts` encode it), `docs/SETUP.md`, manual checklist.
-- Supabase dashboard (not checked): TOTP MFA on, redirect URL `supportslot://auth-callback`, PKCE emails.
+- Supabase dashboard (not checked): redirect URL `supportslot://auth-callback`, PKCE emails.
 - Unresolved retention decisions (deletion): shared conversations are deleted for both sides; booking snapshots keep names; support requests keep email/message; audit rows kept with actor cleared.
 - Legal text unreviewed; no signing/TestFlight; accessibility audit pending; server cannot prove coordinates are inside UK borders.
 
@@ -33,3 +33,6 @@ Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 app
 
 ## Supabase advisor (7 Nov 2026, after 0006)
 No search-path warnings. Remaining warnings are expected: the app's own SECURITY DEFINER functions are callable by signed-in users by design (and `submit_support_request` by visitors), and leaked-password protection is a dashboard toggle that is off.
+
+## Two-factor removed (7 Nov 2026)
+By the owner's decision there is no authenticator-app step. Migration `0007` removed the aal2 requirement from the policies and functions (it also renamed the policy to `active_session_required`); the iOS app no longer has the set-up/enter-code screens; the live-check scripts, demo-account script and the TOTP helper scripts were updated or removed. Accounts are protected by a password only. Two leftover SQL functions (`export_my_data`, `delete_my_account`) still raise the old `mfa_required` text if called by someone with no profile; harmless. If two-factor is ever wanted again, make it optional rather than mandatory.

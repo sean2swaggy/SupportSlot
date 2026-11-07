@@ -204,10 +204,10 @@ describe("artists' coordinates are private", () => {
     const byName = await q(["no coords", null, null, null, null, null, "newest"]);
     expect(byName.rows.map((r) => r.id)).toEqual([typed]);
     expect(byName.rows[0].distance_miles).toBeNull();
-    // Artists cannot use it, nor can a password-only session.
+    // Promoters (and any signed-in user) can use it; visitors cannot.
     const artist = await makeArtist(db);
-    await asUser(db, artist, (tx) => tx.query(`select * from public.search_artists()`)); // any signed-in aal2 user may search
-    await expect(asUser(db, promoter, (tx) => tx.query(`select * from public.search_artists()`), { aal: "aal1" })).rejects.toThrow(/mfa_required/);
+    await asUser(db, artist, (tx) => tx.query(`select * from public.search_artists()`)); // any signed-in user may search
+    await asUser(db, promoter, (tx) => tx.query(`select * from public.search_artists()`), { aal: "aal1" }); // the aal claim no longer matters
     await expect(asAnon(db, (tx) => tx.query(`select * from public.search_artists()`))).rejects.toThrow(/permission denied/);
   });
 });

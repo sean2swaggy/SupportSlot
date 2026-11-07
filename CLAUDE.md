@@ -8,7 +8,7 @@ Read this before making changes. `README.md` has setup and the test commands;
 A UK marketplace connecting independent artists with promoters posting
 "support slot" (opening act) listings. A **native iOS app** (SwiftUI, iOS 17+,
 `@Observable`, no third-party packages) that talks directly to **Supabase**
-(Auth with mandatory TOTP 2FA, Postgres + RLS, SQL functions). There is no
+(Auth with email confirmation by 6-digit code and password-only sign-in, Postgres + RLS, SQL functions). There is no
 server of our own; `web/` is a sample-data web companion (Vite + React, see
 `web/README.md`) not yet wired to Supabase. **No money passes through the platform** —
 the promoter pays the artist directly; there is no payment provider, fee or
@@ -40,11 +40,12 @@ Both test suites and a clean `build` must pass before calling anything done.
    because the travel rule now lives only in SQL (`tests/db/uk-locations.test.ts`).
 3. **No invented numbers.** There is no match percentage. `Logic/Fit.swift`
    explains genre/location/size fit from real fields.
-4. **Access is decided in one place per layer.** The database enforces RLS; the
-   app's `AppStore` phase order (needsConfig → signedOut → onboarding →
-   mfaSetup → mfaChallenge → suspended → ready) gates what is shown. MFA is
-   enforced client-side (RLS doesn't require aal2) — don't describe it as
-   server-enforced.
+4. **Access is decided in one place per layer.** The database enforces RLS (a
+   signed-in, non-suspended account on every table, migration 0007); the app's
+   `AppStore` phase order (needsConfig → signedOut → onboarding → suspended →
+   ready) gates what is shown. Sign-in is **password-only**: there is no
+   two-factor step (removed on request in 0007). Email is confirmed with a
+   6-digit code typed into the app. Anyone with the password has the account.
 5. **Schema/code drift fails a test.** `tests/db/swift-contract.test.ts` reads
    the Swift sources and checks every column list (`static let …Columns` under a
    `// table: x` tag, `Query("table", …)`), filter, embed relationship, write
@@ -72,10 +73,10 @@ characters, stored in text columns.
 ## Testing layers
 
 - `SupportSlotTests/` — XCTest with `StubURLProtocol` (no network): query
-  encoding, JSON, error mapping, JWT, auth (single-flight refresh, MFA), logic.
+  encoding, JSON, error mapping, JWT, auth (single-flight refresh, email code), logic.
 - `tests/db/*.test.ts` — real migrations in PGlite with stubbed Supabase
   auth/roles: RLS, triggers, the state machine, rate limits, deletion, search,
-  app functions, the Swift contract and travel parity. Single connection — it
+  app functions, the Swift contract and the UK-location/travel rules. Single connection — it
   cannot prove concurrent behaviour.
 - `scripts/live-journey.mjs`, `scripts/security-regression.mjs` — live checks
   against the configured Supabase project (synthetic users, cleaned up).

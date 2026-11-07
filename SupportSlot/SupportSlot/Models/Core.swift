@@ -28,7 +28,7 @@ struct Profile: Decodable, Equatable {
     var isAdmin: Bool { adminRole == "admin" }
 }
 
-/// `my_account_status()`: the first thing asked once the session is aal2. Works for a suspended account.
+/// `my_account_status()`: the first thing asked once signed in. Works for a suspended account.
 struct AccountStatus: Decodable, Equatable {
     let role: String
     let hasOnboarded: Bool

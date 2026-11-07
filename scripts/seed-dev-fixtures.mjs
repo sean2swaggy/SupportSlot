@@ -12,9 +12,8 @@
 //   is exactly what the app would have produced (offers, bookings, notifications).
 // - No email is sent: accounts are created with the admin API (email_confirm), and
 //   the example.com addresses are a reserved domain with no mailboxes.
-// - Every demo user goes through the REAL second factor (TOTP enrol + verify), so
-//   all their calls carry an aal2 token, exactly like the app's. 2FA is not weakened.
-// - Passwords and authenticator secrets go to .dev-fixtures/ (gitignored). Never commit them.
+// - Every demo user signs in with a password, exactly like the app.
+// - Passwords go to .dev-fixtures/ (gitignored). Never commit them.
 // - UK-wide: demo people and venues in England, Scotland, Wales and Northern Ireland,
 //   including a small town, a place with no county, three different "Newport"s and a
 //   typed-in venue with no map position.
@@ -25,8 +24,6 @@ import {
   loadEnv, guard, fixtureId, londonDate, readAccounts, writeAccounts, newPassword,
   adminClient, anonClient, must, FIXTURE_DIR, venueFixtureId,
 } from "./lib/fixture-helpers.mjs";
-import { reachAal2 } from "./lib/live.mjs";
-import { totp } from "./lib/totp.mjs";
 
 const env = loadEnv();
 const ref = guard(env);
@@ -90,7 +87,7 @@ async function ensureUser(p) {
 }
 
 const clients = {};
-/** A signed-in client for this person, upgraded to aal2 through the real second factor. */
+/** A signed-in client for this person (password-only sign-in). */
 async function as(key) {
   if (clients[key]) return clients[key];
   const p = byKey[key];
@@ -103,16 +100,6 @@ async function as(key) {
     if (error) throw new Error(`sign in as ${p.email}: ${error.message}`);
     log(`  ~ restored the recorded password for ${p.email}`);
   }
-  const creds = accounts[p.email];
-  const { data: fac } = await admin.auth.admin.mfa.listFactors({ userId: ids[key] });
-  const verified = (fac?.factors ?? []).some((f) => f.factor_type === "totp" && f.status === "verified");
-  if (verified && !creds.totpSecret) {
-    // A factor exists but we don't hold its secret: remove it and enrol afresh (fixture accounts only).
-    for (const f of fac.factors) await admin.auth.admin.mfa.deleteFactor({ id: f.id, userId: ids[key] });
-  }
-  const hadSecret = verified && creds.totpSecret;
-  const secret = await reachAal2(c, hadSecret ? creds.totpSecret : undefined);
-  if (!hadSecret) { creds.totpSecret = secret; writeAccounts(accounts); log(`  + authenticator enrolled for ${p.email}`); }
   clients[key] = c;
   return c;
 }
@@ -261,9 +248,9 @@ async function seedSavedAndReport() {
 function writeSummary() {
   const rows = PEOPLE.filter((p) => p.login).map((p) => {
     const label = p.key === "artist1" ? "Artist" : p.key === "artist2" ? "Second artist" : p.key === "promA" ? "Promoter (free)" : p.key === "promB" ? "Second promoter" : "Admin";
-    return `| ${label} | ${p.email} | ${accounts[p.email].password} | \`node scripts/totp.mjs ${p.email.replace(/^demo-|@.*$/g, "")}\` |`;
+    return `| ${label} | ${p.email} | ${accounts[p.email].password} |`;
   });
-  const md = `# Demo logins (fictional, local/test only — do not commit)\n\nProject: ${ref}\n\n| Role | Email | Password | 2FA code |\n|---|---|---|---|\n${rows.join("\n")}\n\nAfter the password, the app asks for a 6-digit code: run the command in the last column.\nThese accounts use ${DOMAIN} addresses (a reserved domain with no mailboxes) and were created without sending any email.\n`;
+  const md = `# Demo logins (fictional, local/test only — do not commit)\n\nProject: ${ref}\n\n| Role | Email | Password |\n|---|---|---|\n${rows.join("\n")}\n`;
   fs.writeFileSync(new URL("TEST_ACCOUNTS.md", FIXTURE_DIR), md, { mode: 0o600 });
 }
 
@@ -302,10 +289,8 @@ try {
   log("Conversations, saved gigs, report");
   await seedThreads();
   await seedSavedAndReport();
-  log("Authenticators (every person who logs in has one; others get one the first time they act)");
-  for (const p of PEOPLE.filter((x) => x.login)) await as(p.key);
   writeSummary();
-  log("\nDone. Logins are in .dev-fixtures/TEST_ACCOUNTS.md (gitignored). 2FA code: node scripts/totp.mjs artist");
+  log("\nDone. Logins are in .dev-fixtures/TEST_ACCOUNTS.md (gitignored).");
 } catch (err) {
   console.error("\nSeed failed:", err.message);
   console.error("Safe to re-run: it skips anything already created. (--reset removes fixture rows.)");

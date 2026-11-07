@@ -146,7 +146,7 @@ final class AuthService: @unchecked Sendable {
         lock.lock(); refreshTask = nil; lock.unlock()
     }
 
-    /// Re-reads the signed-in user (email confirmation, enrolled factors).
+    /// Re-reads the signed-in user (email confirmation).
     func refreshUser() async throws -> AuthUser {
         guard let token = try await validAccessToken() else { throw AppError.sessionExpired }
         let (data, http) = try await transport.send(transport.request("GET", "/auth/v1/user", bearer: token))
@@ -252,61 +252,18 @@ final class AuthService: @unchecked Sendable {
     /// Forgets any half-finished email-link flow (on sign-out).
     func clearPendingFlow() { PendingAuthFlowStore.clear(key: flowKey) }
 
-    // MARK: - Two-factor (TOTP)
-
-    func enrollTOTP() async throws -> TOTPEnrollment {
-        guard let token = try await validAccessToken() else { throw AppError.sessionExpired }
-        struct Body: Encodable { let factorType = "totp"; let friendlyName: String; let issuer = "Support Slot" }
-        let body = try JSONCoding.encoder.encode(Body(friendlyName: "Authenticator \(Int(Date().timeIntervalSince1970))"))
-        let (data, http) = try await transport.send(transport.request("POST", "/auth/v1/factors", bearer: token, body: body))
-        guard (200..<300).contains(http.statusCode) else { throw Self.authError(data, status: http.statusCode) }
-        struct Resp: Decodable { struct TOTP: Decodable { let secret: String; let uri: String }; let id: String; let totp: TOTP }
-        let r = try JSONCoding.decoder.decode(Resp.self, from: data)
-        return TOTPEnrollment(factorID: r.id, secret: r.totp.secret, otpauthURI: r.totp.uri)
-    }
-
-    /// Challenges and verifies a code in one go. On success the session is
-    /// upgraded to aal2.
-    func verifyTOTP(factorID: String, code: String) async throws {
-        guard let token = try await validAccessToken() else { throw AppError.sessionExpired }
-        let (cdata, chttp) = try await transport.send(transport.request("POST", "/auth/v1/factors/\(factorID)/challenge", bearer: token))
-        guard (200..<300).contains(chttp.statusCode) else { throw Self.authError(cdata, status: chttp.statusCode) }
-        struct Challenge: Decodable { let id: String }
-        let challenge = try JSONCoding.decoder.decode(Challenge.self, from: cdata)
-
-        struct Body: Encodable { let challengeId: String; let code: String }
-        let body = try JSONCoding.encoder.encode(Body(challengeId: challenge.id, code: code))
-        let (vdata, vhttp) = try await transport.send(transport.request("POST", "/auth/v1/factors/\(factorID)/verify", bearer: token, body: body))
-        guard (200..<300).contains(vhttp.statusCode) else { throw Self.authError(vdata, status: vhttp.statusCode, mfa: true) }
-        let upgraded = try JSONCoding.decoder.decode(TokenResponse.self, from: vdata).session
-        // The server said yes; make sure the token we're about to rely on really says aal2.
-        // (If it doesn't, don't treat the person as verified: the database wouldn't either.)
-        guard upgraded.isAAL2 else { throw AppError("We couldn’t confirm that code on the server. Please try again.") }
-        store(upgraded)
-    }
-
-    /// Removes a factor that was started but never verified (so setup can restart cleanly).
-    func unenroll(factorID: String) async {
-        guard let token = try? await validAccessToken() else { return }
-        _ = try? await transport.send(transport.request("DELETE", "/auth/v1/factors/\(factorID)", bearer: token))
-    }
-
     // MARK: - Errors
 
-    static func authError(_ data: Data, status: Int, mfa: Bool = false) -> AppError {
+    static func authError(_ data: Data, status: Int) -> AppError {
         struct Body: Decodable { let msg: String?; let message: String?; let errorCode: String?; let error: String?; let errorDescription: String? }
         let b = try? JSONCoding.decoder.decode(Body.self, from: data)
         let code = b?.errorCode ?? b?.error ?? ""
         let text = b?.msg ?? b?.message ?? b?.errorDescription ?? ""
-        return AppError(friendlyAuth(code: code, text: text, status: status, mfa: mfa), code: code.isEmpty ? nil : code, isNetwork: false)
+        return AppError(friendlyAuth(code: code, text: text, status: status), code: code.isEmpty ? nil : code, isNetwork: false)
     }
 
-    static func friendlyAuth(code: String, text: String, status: Int, mfa: Bool) -> String {
+    static func friendlyAuth(code: String, text: String, status: Int) -> String {
         let t = text.lowercased()
-        if mfa || code.hasPrefix("mfa_") {
-            if code == "mfa_verification_failed" || t.contains("invalid totp") || t.contains("invalid") { return "That code isn't right. Try the latest one from your authenticator app." }
-            return "We couldn't check that code. Please try again."
-        }
         switch code {
         case "invalid_credentials": return "That email and password don't match."
         case "email_not_confirmed": return "Confirm your email first — enter the code we emailed you."

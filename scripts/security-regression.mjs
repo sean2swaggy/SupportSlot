@@ -3,7 +3,7 @@
 //
 // Negative tests that go straight at the Supabase API the way an attacker with
 // the public anon key and a normal account would — NOT through the app — using
-// real sessions that have completed the real second factor (aal2) unless a check
+// real password sessions unless a check
 // says otherwise. Everything created is removed in `finally`; no email is sent
 // (accounts come from the admin API).
 //
@@ -34,7 +34,7 @@ const record = (name, pass, detail = "") => {
   console.log(`${pass ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
 };
 
-async function user(role, label, { place = PLACES.london, mfa = true } = {}) {
+async function user(role, label, { place = PLACES.london } = {}) {
   const email = `regress-${label}-${RUN}@example.com`;
   const { data, error } = await admin.auth.admin.createUser({ email, password: PASSWORD, email_confirm: true, user_metadata: { role } });
   if (error) throw new Error(`createUser ${label}: ${error.message}`);
@@ -50,7 +50,6 @@ async function user(role, label, { place = PLACES.london, mfa = true } = {}) {
   const client = anonClient(env);
   const si = await client.auth.signInWithPassword({ email, password: PASSWORD });
   if (si.error) throw new Error(`sign in ${label}: ${si.error.message}`);
-  if (mfa) await reachAal2(client);
   return { id, client, email };
 }
 
@@ -84,30 +83,21 @@ async function main() {
     record("A visitor cannot call admin functions", !!e3, e3?.message);
   }
 
-  // 2. Password-only session
+  // 2. A password-only session is a normal session, and only that
   {
-    const half = await user("artist", "half", { mfa: false });
-    record("A password-only token is aal1", (await aalOf(half.client)) === "aal1");
-    const t = await accessTokenOf(half.client);
-    const calls = [
-      ["read own profile", rest(env, t, `profiles?id=eq.${half.id}&select=id`), (r) => r.status === 200 && r.body.length === 0],
-      ["read applications", rest(env, t, "applications?select=id"), (r) => r.status === 200 && r.body.length === 0],
-      ["read notifications", rest(env, t, "notifications?select=id"), (r) => r.status === 200 && r.body.length === 0],
-      ["insert an application", rest(env, t, "applications", { method: "POST", body: JSON.stringify({ slot_id: slotA.id, artist_id: half.id }) }), (r) => r.status >= 400],
-      ["call respond_to_offer", rest(env, t, "rpc/respond_to_offer", { method: "POST", body: JSON.stringify({ p_application_id: appA.id, p_accept: true }) }), (r) => r.status >= 400],
-      ["call export_my_data", rest(env, t, "rpc/export_my_data", { method: "POST", body: "{}" }), (r) => r.status >= 400],
-      ["call delete_my_account", rest(env, t, "rpc/delete_my_account", { method: "POST", body: "{}" }), (r) => r.status >= 400],
-      ["call set_my_location", rest(env, t, "rpc/set_my_location", { method: "POST", body: JSON.stringify({ p_label: "Leeds", p_country: "England", p_region: null, p_lat: 53.8, p_lon: -1.55, p_source: "search" }) }), (r) => r.status >= 400],
-    ];
-    for (const [what, p, ok] of calls) {
-      const r = await p;
-      record(`A password-only session cannot ${what}`, ok(r), `${r.status} ${JSON.stringify(r.body).slice(0, 70)}`);
-    }
-    const { error } = await half.client.auth.mfa.enroll({ factorType: "totp" });
-    record("…but it CAN enrol an authenticator (so setup is possible)", !error, error?.message);
+    const solo = await user("artist", "solo");
+    const t = await accessTokenOf(solo.client);
+    const own = await rest(env, t, `profiles?id=eq.${solo.id}&select=id`);
+    record("A password-only session reads its own profile", own.status === 200 && own.body.length === 1, `${own.status}`);
+    const notes = await rest(env, t, "notifications?select=id");
+    record("…and sees only its own notifications (none yet)", notes.status === 200 && notes.body.length === 0, `${notes.status}`);
+    const spoof = await rest(env, t, "applications", { method: "POST", body: JSON.stringify({ slot_id: slotA.id, artist_id: artistB.id }) });
+    record("…but cannot apply as another artist", spoof.status >= 400, `${spoof.status}`);
+    const staff = await solo.client.rpc("staff_audit_log", { p_limit: 5 });
+    record("…and has no staff powers", !!staff.error, staff.error?.message);
   }
 
-  // 3. Cross-account access and ownership spoofing (aal2)
+  // 3. Cross-account access and ownership spoofing
   {
     await artistA.client.from("artists").update({ bio: "hijacked" }).eq("id", artistB.id);
     const { data } = await admin.from("artists").select("bio").eq("id", artistB.id).single();
@@ -184,11 +174,6 @@ async function main() {
     await mod.client.rpc("admin_suspend_user", { p_profile_id: artistB.id, p_reason: "no" }); // reason too short: must fail and leave no audit row
     const after = (await admin.from("admin_audit_log").select("id", { count: "exact", head: true })).count;
     record("A failed staff action leaves no audit row", before === after, `${before} → ${after}`);
-    // Staff with a password-only session
-    const modHalf = await user("promoter", "mod-half", { mfa: false });
-    await admin.from("profiles").update({ admin_role: "admin" }).eq("id", modHalf.id);
-    const { error: aal1Staff } = await modHalf.client.rpc("staff_audit_log", { p_limit: 5 });
-    record("Staff powers need the second factor too", !!aal1Staff, aal1Staff?.message);
   }
 
   const failed = results.filter((r) => !r.pass);

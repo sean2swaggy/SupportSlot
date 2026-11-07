@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Chooses what to show from the app's state — the same order the website
-/// used: signed out → set up the account → two-factor → suspended → the app.
+/// used: signed out → set up the account → suspended → the app.
 struct RootView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var scenePhase
@@ -16,8 +16,6 @@ struct RootView: View {
             case .launching: SplashView()
             case .signedOut: SignedOutFlow()
             case .onboarding: OnboardingView()
-            case .mfaSetup: MFASetupView()
-            case .mfaChallenge: MFAChallengeView()
             case .suspended: SuspendedView()
             case .loadFailed(let error): LoadFailedView(error: error)
             case .ready: MainShell()
