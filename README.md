@@ -6,8 +6,8 @@ an act.
 
 This repository is a **native iOS app** (SwiftUI, iOS 17+, no third-party
 packages) that talks straight to **Supabase** (Auth with mandatory TOTP 2FA,
-Postgres, row-level security, SQL functions). There is no website and no server
-of our own.
+Postgres, row-level security, SQL functions). There is no server of our own; `web/` is a small
+sample-data web companion (see `web/README.md`) with no backend yet.
 
 **Support Slot handles no money.** An offer records the fee and travel the
 promoter and artist agreed; once the artist accepts, the promoter pays them

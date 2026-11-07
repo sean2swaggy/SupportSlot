@@ -9,7 +9,8 @@ A UK marketplace connecting independent artists with promoters posting
 "support slot" (opening act) listings. A **native iOS app** (SwiftUI, iOS 17+,
 `@Observable`, no third-party packages) that talks directly to **Supabase**
 (Auth with mandatory TOTP 2FA, Postgres + RLS, SQL functions). There is no
-website and no server of our own. **No money passes through the platform** —
+server of our own; `web/` is a sample-data web companion (Vite + React, see
+`web/README.md`) not yet wired to Supabase. **No money passes through the platform** —
 the promoter pays the artist directly; there is no payment provider, fee or
 subscription, and every promoter has the promoter tools.
 
