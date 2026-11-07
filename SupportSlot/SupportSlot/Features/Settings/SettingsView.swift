@@ -66,7 +66,7 @@ struct SettingsView: View {
                     Button("Delete my account") { showDelete = true }.buttonStyle(.appDanger)
                 }
 
-                Button("Log out") { Task { await store.signOut() } }.buttonStyle(.appOutline)
+                LogOutButton { Text("Log out") }.buttonStyle(.appOutline)
             }
             .padding(20)
         }

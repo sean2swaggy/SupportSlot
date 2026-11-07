@@ -73,7 +73,7 @@ struct LoadFailedView: View {
         VStack(spacing: 18) {
             Logo(size: 24)
             ErrorState(error: error) { Task { await store.retry() } }
-            Button("Log out") { Task { await store.signOut() } }.buttonStyle(.app(.ghost))
+            LogOutButton { Text("Log out") }.buttonStyle(.app(.ghost))
         }
         .padding(24)
     }

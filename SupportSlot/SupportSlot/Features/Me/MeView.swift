@@ -93,7 +93,7 @@ struct MeView: View {
         row("Settings", detail: "Password, data, account", icon: "gearshape") { SettingsView() }
         row("Help & support", detail: "Contact us", icon: "questionmark.circle") { SupportView() }
         row("Trust & safety", detail: "No pay-to-play. Ever.", icon: "checkmark.shield") { LegalView(document: LegalContent.trust).navigationTitle("Trust & safety") }
-        Button("Log out") { Task { await store.signOut() } }.buttonStyle(.appOutline).padding(.top, 6)
+        LogOutButton { Text("Log out") }.buttonStyle(.appOutline).padding(.top, 6)
     }
 
     private func row<Destination: View>(_ title: String, detail: String, icon: String, @ViewBuilder destination: @escaping () -> Destination) -> some View {

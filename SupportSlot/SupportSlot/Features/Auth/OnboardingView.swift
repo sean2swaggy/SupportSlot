@@ -41,7 +41,7 @@ struct OnboardingView: View {
                     if let stepError { Banner(kind: .error, text: stepError) }
                     if let submitError { Banner(kind: .error, text: submitError) }
                     nav
-                    Button { Task { await store.signOut() } } label: { Label("Log out", systemImage: "rectangle.portrait.and.arrow.right") }
+                    LogOutButton { Label("Log out", systemImage: "rectangle.portrait.and.arrow.right") }
                         .buttonStyle(.app(.outline, compact: true)).frame(maxWidth: .infinity)
                 }
             }

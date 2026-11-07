@@ -22,7 +22,7 @@ struct SuspendedView: View {
                 HStack(spacing: 16) {
                     ForEach(LegalPage.allCases) { p in Button(p.label) { legal = p }.font(Theme.mono(11)).foregroundStyle(Theme.paperDim) }
                 }
-                Button("Log out") { Task { await store.signOut() } }.buttonStyle(.appOutline)
+                LogOutButton { Text("Log out") }.buttonStyle(.appOutline)
             }
             .padding(24)
         }
