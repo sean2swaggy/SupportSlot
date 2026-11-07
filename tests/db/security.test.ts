@@ -37,12 +37,11 @@ describe("unauthenticated access", () => {
       `insert into public.applications (slot_id, artist_id, match_percent) values ($1, $2, 50)`,
       [slot, artist]
     );
-    const rows = await asAnon(db, async (tx) => ({
-      applications: (await tx.query(`select id from public.applications`)).rows,
-      profiles: (await tx.query(`select id from public.profiles`)).rows,
-    }));
-    expect(rows.applications).toHaveLength(0);
-    expect(rows.profiles).toHaveLength(0);
+    // The visitor role has no privileges on private tables at all (not merely
+    // "RLS returns no rows"), so there is nothing to misconfigure later.
+    for (const table of ["applications", "profiles", "messages", "bookings"]) {
+      await expect(asAnon(db, (tx) => tx.query(`select id from public.${table}`))).rejects.toThrow(/permission denied/);
+    }
   });
 
   it("can browse open slots (public marketplace data)", async () => {
@@ -74,8 +73,8 @@ describe("mass assignment and role escalation", () => {
     await expect(
       asUser(db, id, (tx) =>
         tx.query(
-          `insert into public.artists (id, handle, name, location, verification)
-           values ($1, 'self-verified', 'X', 'London', 'verified')`,
+          `insert into public.artists (id, handle, name, location, location_country, location_region, verification)
+           values ($1, 'self-verified', 'X', 'London', 'England', 'Greater London', 'verified')`,
           [id]
         )
       )
@@ -116,10 +115,9 @@ describe("application integrity", () => {
     );
     const appId = app.rows[0].id;
     for (const who of [artist, promoter]) {
-      const res = await asUser(db, who, (tx) =>
-        tx.query(`update public.applications set status = 'confirmed' where id = $1`, [appId])
-      );
-      expect(res.affectedRows).toBe(0); // no UPDATE policy: the row is simply not touchable
+      await expect(
+        asUser(db, who, (tx) => tx.query(`update public.applications set status = 'confirmed' where id = $1`, [appId]))
+      ).rejects.toThrow(/permission denied/); // clients hold no UPDATE privilege on applications
     }
     const row = await db.query<{ status: string }>(`select status from public.applications where id = $1`, [appId]);
     expect(row.rows[0].status).toBe("submitted");

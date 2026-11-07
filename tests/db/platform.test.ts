@@ -7,6 +7,8 @@ import {
   makeArtist,
   makePromoter,
   makeSlot,
+  makeVenue,
+  PLACES,
   type Db,
 } from "./harness";
 
@@ -17,12 +19,12 @@ beforeAll(async () => {
 afterAll(async () => db.close());
 
 const search = (args: Record<string, unknown> = {}, who: "anon" | string = "anon") => {
-  const defaults = { q: null, city: null, genre: null, from: null, to: null, minFee: null, venueSize: null, artistSize: null, fromCity: null, maxMiles: null, urgent: false, sort: "date", limit: 12, offset: 0 };
+  const defaults = { q: null, country: null, genre: null, from: null, to: null, minFee: null, venueSize: null, artistSize: null, nearLat: null, nearLon: null, maxMiles: null, urgent: false, sort: "date", limit: 12, offset: 0 };
   const a = { ...defaults, ...args };
   const q = (tx: { query: Db["query"] }) =>
-    tx.query<{ id: string; total_count: string }>(
-      `select * from public.search_slots($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-      [a.q, a.city, a.genre, a.from, a.to, a.minFee, a.venueSize, a.artistSize, a.fromCity, a.maxMiles, a.urgent, a.sort, a.limit, a.offset]
+    tx.query<{ id: string; total_count: string; distance_miles: number | null }>(
+      `select * from public.search_slots($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [a.q, a.country, a.genre, a.from, a.to, a.minFee, a.venueSize, a.artistSize, a.nearLat, a.nearLon, a.maxMiles, a.urgent, a.sort, a.limit, a.offset]
     );
   return who === "anon" ? asAnon(db, q) : asUser(db, who, q);
 };
@@ -30,7 +32,7 @@ const search = (args: Record<string, unknown> = {}, who: "anon" | string = "anon
 describe("public discovery", () => {
   it("works signed-out, returns only active listings, and reports a total for pagination", async () => {
     const promoter = await makePromoter(db);
-    const open = await makeSlot(db, promoter, { headliner: "Searchable Alpha", city: "Leeds", genres: ["Punk"], supportFee: 300 });
+    const open = await makeSlot(db, promoter, { headliner: "Searchable Alpha", place: PLACES.leeds, genres: ["Punk"], supportFee: 300 });
     const closed = await makeSlot(db, promoter, { headliner: "Searchable Closed" });
     await asUser(db, promoter, (tx) => tx.query(`select public.close_slot($1)`, [closed]));
     const pastDeadline = await makeSlot(db, promoter, { headliner: "Searchable Late" });
@@ -45,15 +47,15 @@ describe("public discovery", () => {
     expect(Number(r.rows[0].total_count)).toBe(1);
   });
 
-  it("filters by city, genre, pay, venue size, date range and text; sorts; paginates", async () => {
+  it("filters by place, genre, pay, venue size, date range and text; sorts; paginates", async () => {
     const promoter = await makePromoter(db);
     const mk = (over: Record<string, unknown>) => makeSlot(db, promoter, { headliner: "Page Show " + Math.random().toString(36).slice(2, 6), ...over });
     const ids = [
-      await mk({ city: "Bristol", genres: ["Folk"], supportFee: 90, date: "2099-03-01" }),
-      await mk({ city: "Bristol", genres: ["Folk"], supportFee: 180, date: "2099-04-01" }),
-      await mk({ city: "Brighton", genres: ["Techno"], supportFee: 250, date: "2099-05-01" }),
+      await mk({ place: PLACES.bristol, genres: ["Folk"], supportFee: 90, date: "2099-03-01" }),
+      await mk({ place: PLACES.bristol, genres: ["Folk"], supportFee: 180, date: "2099-04-01" }),
+      await mk({ place: PLACES.brighton, genres: ["Techno"], supportFee: 250, date: "2099-05-01" }),
     ];
-    const bristol = await search({ q: "page show", city: "Bristol" });
+    const bristol = await search({ q: "page show", nearLat: 51.4545, nearLon: -2.5879, maxMiles: 10 });
     expect(bristol.rows.map((x) => x.id)).toEqual([ids[0], ids[1]]); // soonest first
     const pay = await search({ q: "page show", minFee: 200 });
     expect(pay.rows.map((x) => x.id)).toEqual([ids[2]]);
@@ -72,15 +74,21 @@ describe("public discovery", () => {
     expect(none.rows).toHaveLength(0);
   });
 
-  it("distance filter uses the real city table, and search text is matched literally (no wildcard injection)", async () => {
+  it("radius search uses straight-line distance from real coordinates; text is matched literally", async () => {
     const promoter = await makePromoter(db);
-    const far = await makeSlot(db, promoter, { headliner: "Dist Far", city: "Leeds" });
-    const near = await makeSlot(db, promoter, { headliner: "Dist Near", city: "Brighton" });
-    const r = await search({ q: "dist ", fromCity: "London", maxMiles: 60 });
-    expect(r.rows.map((x) => x.id)).toEqual([near]);
-    expect(far).toBeTruthy();
-    const wildcard = await search({ q: "%" });
-    expect(wildcard.rows).toHaveLength(0);
+    const far = await makeSlot(db, promoter, { headliner: "Dist Far", place: PLACES.leeds });
+    const near = await makeSlot(db, promoter, { headliner: "Dist Near", place: PLACES.brighton });
+    const noCoords = await makeSlot(db, promoter, { headliner: "Dist Typed", place: { label: "Typedville, England", country: "England" } });
+    const r = await search({ q: "dist ", nearLat: PLACES.london.lat, nearLon: PLACES.london.lon, maxMiles: 60 });
+    expect(r.rows.map((x) => x.id)).toEqual([near]); // Brighton ≈ 47 mi from London; Leeds ≈ 168 mi
+    expect(r.rows[0].distance_miles).toBeGreaterThan(45);
+    expect(r.rows[0].distance_miles).toBeLessThan(50);
+    // A listing with no coordinates is left out of a radius search, never guessed at,
+    // but is still found without one.
+    expect(r.rows.map((x) => x.id)).not.toContain(noCoords);
+    const all = await search({ q: "dist " });
+    expect(all.rows.map((x) => x.id).sort()).toEqual([far, near, noCoords].sort());
+    expect((await search({ q: "%" })).rows).toHaveLength(0);
   });
 
   it("saved gigs persist per account and are private", async () => {
@@ -217,14 +225,19 @@ describe("moderation, support and staff access", () => {
 
   it("nobody can make themselves staff, unsuspend themselves, or edit their stored email", async () => {
     const p = await makePromoter(db);
-    await asService(db, (tx) => tx.query(`update public.profiles set suspended_at = now(), suspension_reason = 'test' where id = $1`, [p]));
     for (const sql of [
       `update public.profiles set admin_role = 'admin' where id = $1`,
-      `update public.profiles set suspended_at = null where id = $1`,
+      `update public.profiles set suspended_at = now() where id = $1`,
       `update public.profiles set email = 'someone-else@example.com' where id = $1`,
     ]) {
       await expect(asUser(db, p, (tx) => tx.query(sql, [p]))).rejects.toThrow(/only be changed by the platform/);
     }
+    // A suspended account can't even reach its own row to try (session security).
+    await asService(db, (tx) => tx.query(`update public.profiles set suspended_at = now(), suspension_reason = 'test' where id = $1`, [p]));
+    const res = await asUser(db, p, (tx) => tx.query(`update public.profiles set suspended_at = null where id = $1`, [p]));
+    expect(res.affectedRows).toBe(0);
+    const row = await db.query<{ suspended_at: string | null }>(`select suspended_at from public.profiles where id = $1`, [p]);
+    expect(row.rows[0].suspended_at).not.toBeNull();
   });
 
   it("non-staff are refused every staff function", async () => {
@@ -378,43 +391,47 @@ describe("abuse limiter", () => {
 });
 
 describe("needed-tonight alerts", () => {
-  const urgentSlot = (promoter: string, city: string) =>
-    asService(db, async (tx) => {
+  const urgentSlot = async (promoter: string, place: (typeof PLACES)[keyof typeof PLACES]) => {
+    const venue = await makeVenue(db, place);
+    return asService(db, async (tx) => {
       const r = await tx.query<{ id: string }>(
         `insert into public.slots
-           (promoter_id, venue_id, headliner, city, date, doors_time, set_time, performance_length_mins,
+           (promoter_id, venue_id, headliner, date, doors_time, set_time, performance_length_mins,
             expected_attendance, support_fee, application_deadline, genres, is_urgent)
-         values ($1, (select id from public.venues limit 1), 'Tonight Show', $2, '2099-12-01', '19:00', '20:00', 30, 200, 100, '2099-11-30', '{Indie}', true)
+         values ($1, $2, 'Tonight Show', '2099-12-01', '19:00', '20:00', 30, 200, 100, '2099-11-30', '{Indie}', true)
          returning id`,
-        [promoter, city]
+        [promoter, venue]
       );
       return r.rows[0].id;
     });
+  };
   const urgentCount = async (artist: string) =>
     Number((await db.query<{ n: string }>(`select count(*) n from public.notifications where profile_id = $1 and type = 'urgent'`, [artist])).rows[0].n);
 
-  it("notifies only opted-in artists whose travel radius covers the city, and not artists who blocked the promoter", async () => {
+  it("notifies only opted-in artists whose travel radius covers the venue, never artists without coordinates or who blocked the promoter", async () => {
     const promoter = await makePromoter(db);
-    const near = await makeArtist(db, { location: "London" });
-    const far = await makeArtist(db, { location: "Leeds" });
-    const optedOut = await makeArtist(db, { location: "London" });
-    const blocker = await makeArtist(db, { location: "London" });
+    const near = await makeArtist(db, { place: PLACES.london });
+    const far = await makeArtist(db, { place: PLACES.leeds });
+    const optedOut = await makeArtist(db, { place: PLACES.london });
+    const blocker = await makeArtist(db, { place: PLACES.london });
+    const typedIn = await makeArtist(db, { place: { label: "Somewhere, England", country: "England" } });
     await asService(db, async (tx) => {
-      await tx.query(`update public.artists set last_minute_alerts = true, travel_radius_miles = 50 where id = any($1)`, [[near, far, blocker]]);
+      await tx.query(`update public.artists set last_minute_alerts = true, travel_radius_miles = 50 where id = any($1)`, [[near, far, blocker, typedIn]]);
       await tx.query(`insert into public.promoter_blocks (artist_id, promoter_id) values ($1, $2)`, [blocker, promoter]);
     });
-    await urgentSlot(promoter, "London");
+    await urgentSlot(promoter, PLACES.london);
     expect(await urgentCount(near)).toBe(1);
     expect(await urgentCount(far)).toBe(0); // Leeds is outside a 50-mile radius of London
     expect(await urgentCount(optedOut)).toBe(0);
     expect(await urgentCount(blocker)).toBe(0);
+    expect(await urgentCount(typedIn)).toBe(0); // no coordinates: we can't tell, so we don't alert
   });
 
   it("a non-urgent listing sends nothing", async () => {
     const promoter = await makePromoter(db);
-    const artist = await makeArtist(db, { location: "London" });
+    const artist = await makeArtist(db, { place: PLACES.london });
     await asService(db, (tx) => tx.query(`update public.artists set last_minute_alerts = true where id = $1`, [artist]));
-    await makeSlot(db, promoter, { city: "London" });
+    await makeSlot(db, promoter, { place: PLACES.london });
     expect(await urgentCount(artist)).toBe(0);
   });
 });
