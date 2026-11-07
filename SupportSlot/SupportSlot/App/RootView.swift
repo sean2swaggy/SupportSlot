@@ -49,6 +49,7 @@ struct RootView: View {
         .task { await store.start() }
         #if DEBUG
         .task { if CommandLine.arguments.contains("-previewVerifiedThanks") { store.showVerifiedThanks = true } } // lets the screen be looked at without signing up
+        .task { if CommandLine.arguments.contains("-previewTour") { showTour = true } }
         #endif
         .task(id: store.phase == .ready) {
             // Keep unread counts, applications and offers current without a manual refresh.

@@ -10,6 +10,7 @@ struct DiscoverView: View {
     @State private var filters: SlotFilters
     @State private var searchText = ""
     @State private var showFilters = false
+    @State private var showMap = false
     @State private var savingSearch = false
     @State private var searchName = ""
     @State private var saveNote: String?
@@ -37,6 +38,9 @@ struct DiscoverView: View {
                 }
 
                 filterBar
+                if !model.slots.isEmpty {
+                    Button { showMap = true } label: { Label("Show on map", systemImage: "map") }.buttonStyle(.app(.outline, compact: true))
+                }
                 if canSaveSearch { saveSearchBar }
 
                 switch model.status {
@@ -69,6 +73,7 @@ struct DiscoverView: View {
             .padding(20)
         }
         .refreshable { await reload() }
+        .sheet(isPresented: $showMap) { SlotMapView(slots: model.slots).environment(store) }
         .screenBackground()
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
