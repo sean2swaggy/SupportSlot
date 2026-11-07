@@ -42,9 +42,8 @@ struct RootView: View {
             }
             .preferredColorScheme(.dark)
         }
-        .onChange(of: store.phase == .ready) { _, ready in
-            if ready, let uid = store.userId, !TourSeen.isSeen(uid), !store.showVerifiedThanks { showTour = true }
-        }
+        .onChange(of: store.phase == .ready) { _, _ in offerTourIfNeeded() }
+        .onChange(of: store.showVerifiedThanks) { _, _ in offerTourIfNeeded() }
         .onOpenURL { url in Task { await store.handle(url: url) } }
         .task { await store.start() }
         #if DEBUG
@@ -63,6 +62,14 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, new in
             if new == .active { Task { await store.refresh() } }
         }
+    }
+}
+
+private extension RootView {
+    /// The welcome tour: once per account, when the app is ready and the thank-you screen isn't up.
+    func offerTourIfNeeded() {
+        guard store.phase == .ready, !store.showVerifiedThanks, let uid = store.userId, !TourSeen.isSeen(uid) else { return }
+        showTour = true
     }
 }
 
