@@ -62,8 +62,8 @@ final class UKDatesTests: XCTestCase {
 
 final class FitTests: XCTestCase {
     private func fit(genres: [String] = ["Indie", "Folk"], location: String = "London", radius: Int = 100, size: String = "emerging",
-                     slotGenres: [String] = ["Indie"], city: String = "London", sizeFit: [String] = ["emerging", "developing"]) -> Fit {
-        Fit.explain(artistGenres: genres, artistLocation: location, travelRadiusMiles: radius, artistSize: size, slotGenres: slotGenres, slotCity: city, slotSizeFit: sizeFit)
+                     slotGenres: [String] = ["Indie"], city: String = "London", sizeFit: [String] = ["emerging", "developing"], miles: Int? = nil) -> Fit {
+        Fit.explain(artistGenres: genres, artistLocation: location, travelRadiusMiles: radius, artistSize: size, slotGenres: slotGenres, slotCity: city, slotSizeFit: sizeFit, distanceMiles: miles)
     }
 
     func testReportsRealMatchesWithReasonsAndNoPercentage() {
@@ -74,9 +74,18 @@ final class FitTests: XCTestCase {
         XCTAssertFalse(f.summary.contains("%"))
     }
 
-    func testNearbyCityIsPartialInsideRadiusAndMismatchOutside() {
-        XCTAssertEqual(fit(city: "Brighton").signals.first(where: { $0.key == .location })?.state, .partial) // 55 miles
-        XCTAssertEqual(fit(city: "Leeds").signals.first(where: { $0.key == .location })?.state, .mismatch)   // 200 miles
+    func testNearbyPlaceIsPartialInsideRadiusAndMismatchOutside() {
+        XCTAssertEqual(fit(city: "Brighton", miles: 47).signals.first(where: { $0.key == .location })?.state, .partial)
+        XCTAssertEqual(fit(city: "Leeds", miles: 168).signals.first(where: { $0.key == .location })?.state, .mismatch)
+        let detail = fit(city: "Brighton", miles: 47).signals.first(where: { $0.key == .location })!.detail
+        XCTAssertTrue(detail.contains("straight line"), "distance is never presented as a journey time: \(detail)")
+        XCTAssertFalse(detail.lowercased().contains("hour"))
+    }
+
+    func testLocationIsUnknownRatherThanGuessedWhenThereIsNoMapPosition() {
+        let l = fit(city: "Aberystwyth, Ceredigion, Wales", miles: nil).signals.first(where: { $0.key == .location })!
+        XCTAssertEqual(l.state, .unknown)
+        XCTAssertEqual(fit(city: "London", miles: nil).signals.first(where: { $0.key == .location })?.state, .match, "the very same place needs no coordinates")
     }
 
     func testNeverInventsAResultForMissingData() {
@@ -95,28 +104,29 @@ final class FitTests: XCTestCase {
     }
 
     func testRanksMoreClearMatchesHigher() {
-        XCTAssertGreaterThan(fit().rank, fit(slotGenres: ["Techno"], city: "Leeds").rank)
+        XCTAssertGreaterThan(fit().rank, fit(slotGenres: ["Techno"], city: "Leeds", miles: 168).rank)
     }
 }
 
-final class TravelTests: XCTestCase {
-    func testDistancesAreSymmetricAndKnownForEveryPair() {
-        for a in Catalog.cities {
-            for b in Catalog.cities {
-                XCTAssertEqual(Travel.miles(a, b), Travel.miles(b, a))
-                if a != b { XCTAssertNotEqual(Travel.miles(a, b), 150, "\(a)-\(b) fell back to the default") }
-            }
-            XCTAssertEqual(Travel.miles(a, a), 0)
-        }
+final class TravelRuleTests: XCTestCase {
+    func testRuleIsWordedAsADistanceNotAJourneyTime() {
+        XCTAssertEqual(Travel.longJourneyMiles, 30)
+        XCTAssertEqual(Travel.minimumLongTravelPence, 1000)
+        XCTAssertTrue(Travel.ruleSummary.contains("30 miles"))
+        XCTAssertTrue(Travel.ruleSummary.contains("£10.00"))
+        XCTAssertFalse(Travel.ruleSummary.lowercased().contains("an hour"))
     }
 
-    func testLongJourneyTopUp() {
-        XCTAssertEqual(Travel.effectiveContribution(pounds: 0, artistCity: "Manchester", venueCity: "London"), 10)  // 200 miles
-        XCTAssertEqual(Travel.effectiveContribution(pounds: 25, artistCity: "Manchester", venueCity: "London"), 25)
-        XCTAssertEqual(Travel.effectiveContribution(pounds: 0, artistCity: "London", venueCity: "Brighton"), 10)   // 55 miles is 1.4h at 40mph
-        XCTAssertEqual(Travel.effectiveContribution(pounds: 0, artistCity: "London", venueCity: "London"), 0)      // same city: no top-up
-        // The nearest pair of different cities (Manchester–Leeds, 45 miles) is still over an hour.
-        XCTAssertTrue(Travel.isLongJourney("Manchester", "Leeds"))
+    func testPreviewWordsDistanceHonestly() throws {
+        let json = #"{"fee_pence":15000,"travel_pence":1000,"long_journey":true,"distance_miles":47,"basis":"straight_line","minimum_applies":true}"#.data(using: .utf8)!
+        let t = try JSONCoding.decoder.decode(TermsPreview.self, from: json)
+        XCTAssertEqual(t.travelPence, 1000)
+        XCTAssertTrue(t.distanceSentence!.contains("47 miles"))
+        XCTAssertTrue(t.distanceSentence!.contains("not a journey time"))
+        let unknown = #"{"fee_pence":100,"travel_pence":1000,"long_journey":true,"distance_miles":null,"basis":"unknown_location","minimum_applies":true}"#.data(using: .utf8)!
+        let u = try JSONCoding.decoder.decode(TermsPreview.self, from: unknown)
+        XCTAssertNil(u.distanceMiles)
+        XCTAssertTrue(u.distanceSentence!.contains("can’t tell how far"), "an unknown distance is said to be unknown, never invented")
     }
 }
 

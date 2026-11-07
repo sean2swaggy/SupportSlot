@@ -62,7 +62,7 @@ struct SettingsView: View {
                 }
 
                 section("Delete account") {
-                    Text("Permanently deletes your profile, messages and saved gigs, and withdraws anything still open. Past booking records are kept, but are no longer linked to you. You can’t delete while you have an upcoming confirmed booking — cancel it first.").dimBody(13)
+                    Text("Permanently deletes your login, profile and saved gigs, and withdraws anything still open. Conversations you took part in are deleted for the other person too. Past booking records are kept for the other side, with the names they were made under, but no longer linked to your account; support requests you sent are kept until they’re dealt with. You can’t delete while you have an upcoming confirmed booking — cancel it first.").dimBody(13)
                     Button("Delete my account") { showDelete = true }.buttonStyle(.appDanger)
                 }
 
@@ -129,7 +129,7 @@ struct DeleteAccountView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Eyebrow("This can’t be undone", color: Theme.signal)
                 DisplayTitle("Delete your account?", size: 28)
-                Text("Type DELETE to confirm. Your profile, messages and saved gigs will be removed.").dimBody()
+                Text("Type DELETE to confirm. Your login and profile will be removed and you’ll be logged out. Conversations you took part in are deleted for the other person too. We only tell you it worked once the server has confirmed it.").dimBody()
                 TextField("DELETE", text: $confirm).textInputAutocapitalization(.characters).autocorrectionDisabled().fieldStyle(invalid: error != nil)
                 if let error { Banner(kind: .error, text: error) }
                 HStack(spacing: 12) {

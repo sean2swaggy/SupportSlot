@@ -5,6 +5,8 @@ struct SlotCard: View {
     @Environment(AppStore.self) private var store
     let slot: Slot
     var showSave = true
+    /// Straight-line miles from the search centre, when the search had one.
+    var distanceMiles: Double? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -25,6 +27,7 @@ struct SlotCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(slot.headliner).font(Theme.display(21)).foregroundStyle(Theme.paper).lineLimit(2).multilineTextAlignment(.leading)
                     Text([slot.venue?.name, slot.city].compactMap { $0 }.joined(separator: " · ")).dimBody(14)
+                    if let distanceMiles { Text("\(Geo.describe(miles: Int(distanceMiles.rounded()))) away · straight line").font(Theme.mono(10)).foregroundStyle(Theme.paperDim).textCase(.uppercase) }
                 }
                 HStack(spacing: 14) {
                     Label(UKDates.shortDate(slot.date), systemImage: "calendar").font(Theme.mono(12)).foregroundStyle(Theme.paper)

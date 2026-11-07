@@ -10,6 +10,7 @@ final class DiscoverModel {
 
     private(set) var slots: [Slot] = []
     private(set) var total = 0
+    private(set) var distances: [ID: Double] = [:]
     private(set) var page = 0
     private(set) var status: Status = .idle
     private(set) var loadingMore = false
@@ -18,15 +19,15 @@ final class DiscoverModel {
     var hasMore: Bool { slots.count < total }
     private var generation = 0
 
-    func reload(db: Database, filters: SlotFilters, artistCity: String?) async {
+    func reload(db: Database, filters: SlotFilters, base: Coordinate?) async {
         generation += 1
         let mine = generation
         status = .loading
         loadMoreError = nil
         do {
-            let result = try await db.searchSlots(filters.search(artistCity: artistCity, page: 1))
+            let result = try await db.searchSlots(filters.search(base: base, page: 1))
             guard mine == generation else { return }
-            slots = result.slots; total = result.total; page = 1; status = .loaded
+            slots = result.slots; distances = result.distances; total = result.total; page = 1; status = .loaded
         } catch is CancellationError {
             return
         } catch {
@@ -35,17 +36,18 @@ final class DiscoverModel {
         }
     }
 
-    func loadMore(db: Database, filters: SlotFilters, artistCity: String?) async {
+    func loadMore(db: Database, filters: SlotFilters, base: Coordinate?) async {
         guard status == .loaded, hasMore, !loadingMore else { return }
         loadingMore = true
         loadMoreError = nil
         let mine = generation
         defer { loadingMore = false }
         do {
-            let result = try await db.searchSlots(filters.search(artistCity: artistCity, page: page + 1))
+            let result = try await db.searchSlots(filters.search(base: base, page: page + 1))
             guard mine == generation else { return }
             let known = Set(slots.map(\.id))
             slots += result.slots.filter { !known.contains($0.id) }
+            distances.merge(result.distances) { _, new in new }
             total = result.total; page += 1
         } catch is CancellationError {
             return

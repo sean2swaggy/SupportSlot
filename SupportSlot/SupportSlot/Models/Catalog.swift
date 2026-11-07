@@ -1,8 +1,7 @@
 import Foundation
 
-/// The fixed vocabularies the database enforces with CHECK constraints.
+/// The fixed vocabularies the database enforces with CHECK constraints. (Places are not one of them: any town in the UK is valid — see `Place`.)
 enum Catalog {
-    static let cities = ["London", "Manchester", "Birmingham", "Bristol", "Leeds", "Brighton"]
     static let genres = ["Alternative", "Electronic", "Indie", "Experimental", "Hip-Hop", "Punk", "Folk", "Pop", "R&B", "Techno", "Drum & Bass", "Rock"]
     static let artistSizes = ["emerging", "developing", "established"]
     static let availabilities = ["available", "limited", "unavailable"]

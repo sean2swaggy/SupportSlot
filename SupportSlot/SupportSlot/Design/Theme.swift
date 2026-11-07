@@ -14,10 +14,14 @@ enum Theme {
     static let signal = Color(red: 0xff / 255, green: 0x5a / 255, blue: 0x36 / 255)
     static let ok = Color(red: 0x38 / 255, green: 0xe0 / 255, blue: 0x8f / 255)
 
+    /// Sizes follow the person's Dynamic Type setting (Settings → Display & Brightness → Text Size,
+    /// or Accessibility → Larger Text). The root view is rebuilt when that setting changes.
+    static func scaled(_ size: CGFloat) -> CGFloat { UIFontMetrics.default.scaledValue(for: size) }
+
     // Display = Space Grotesk on the web; the system face at heavy weight is the closest native match.
-    static func display(_ size: CGFloat) -> Font { .system(size: size, weight: .bold, design: .default) }
-    static func mono(_ size: CGFloat, weight: Font.Weight = .medium) -> Font { .system(size: size, weight: weight, design: .monospaced) }
-    static func body(_ size: CGFloat = 16, weight: Font.Weight = .regular) -> Font { .system(size: size, weight: weight) }
+    static func display(_ size: CGFloat) -> Font { .system(size: scaled(size), weight: .bold, design: .default) }
+    static func mono(_ size: CGFloat, weight: Font.Weight = .medium) -> Font { .system(size: scaled(size), weight: weight, design: .monospaced) }
+    static func body(_ size: CGFloat = 16, weight: Font.Weight = .regular) -> Font { .system(size: scaled(size), weight: weight) }
 
     static let hairline: CGFloat = 1
 }

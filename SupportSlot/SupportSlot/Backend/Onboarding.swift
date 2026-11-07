@@ -3,7 +3,7 @@ import Foundation
 struct ArtistOnboarding {
     var username: String
     var name: String
-    var city: String
+    var place: Place
     var genres: [String]
     var spotifyUrl: String
     var instagramUrl: String
@@ -14,7 +14,7 @@ struct ArtistOnboarding {
 struct PromoterOnboarding {
     var username: String
     var company: String
-    var city: String
+    var place: Place
     var avatarUrl: String?
 }
 
@@ -49,7 +49,10 @@ extension Database {
                 "id": .string(userId),
                 "handle": .string(handle),
                 "name": .string(d.name.trimmingCharacters(in: .whitespacesAndNewlines)),
-                "location": .string(d.city),
+                "location": .string(d.place.label),
+                "location_country": .string(d.place.country.rawValue),
+                "location_region": .optional(d.place.region),
+                "location_source": .string(d.place.source.rawValue),
                 "genres": .strings(d.genres),
                 "spotify_url": .string(d.spotifyUrl.trimmingCharacters(in: .whitespaces)),
                 "instagram_url": .string(d.instagramUrl.trimmingCharacters(in: .whitespaces)),
@@ -59,6 +62,8 @@ extension Database {
         } catch let e as AppError where e.isDuplicate {
             // A retry after a half-finished attempt: the row is already there.
         }
+        // The private map position (artists only), written with the label in one step.
+        if d.place.hasCoordinates { try await setMyLocation(d.place) }
         try await finishOnboarding(userId: userId)
     }
 
@@ -69,7 +74,10 @@ extension Database {
                 "id": .string(userId),
                 "name": .string(d.company.trimmingCharacters(in: .whitespacesAndNewlines)),
                 "company": .string(d.company.trimmingCharacters(in: .whitespacesAndNewlines)),
-                "location": .string(d.city),
+                "location": .string(d.place.label),
+                "location_country": .string(d.place.country.rawValue),
+                "location_region": .optional(d.place.region),
+                "location_source": .string(d.place.source.rawValue),
                 "avatar_url": .optional(d.avatarUrl),
             ] as Patch)
         } catch let e as AppError where e.isDuplicate {

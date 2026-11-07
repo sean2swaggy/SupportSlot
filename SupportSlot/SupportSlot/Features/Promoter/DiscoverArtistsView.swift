@@ -5,25 +5,22 @@ import SwiftUI
 struct DiscoverArtistsView: View {
     @Environment(AppStore.self) private var store
     @State private var artists: [Artist] = []
+    @State private var distances: [ID: Int] = [:]
+    @State private var total = 0
+    @State private var page = 1
     @State private var state: LoadState = .loading
+    @State private var loadingMore = false
     @State private var search = ""
     @State private var genre = ""
-    @State private var location = ""
-    @State private var distance = 0
+    @State private var country: UKNation?
+    @State private var near: Place?
+    @State private var distance = 25
     @State private var inviting: Artist?
     enum LoadState: Equatable { case loading, loaded, failed(AppError) }
 
-    private var promoterCity: String? { store.promoter?.location }
-
-    private var filtered: [Artist] {
-        let q = search.trimmingCharacters(in: .whitespaces).lowercased()
-        return artists.filter { a in
-            (q.isEmpty || a.name.lowercased().contains(q) || a.handle.lowercased().contains(q))
-            && (genre.isEmpty || a.genres.contains(genre))
-            && (location.isEmpty || a.location == location)
-            && (distance == 0 || promoterCity == nil || Travel.miles(promoterCity!, a.location) <= distance)
-        }
-    }
+    private struct Key: Equatable { var search: String; var genre: String; var country: UKNation?; var near: Coordinate?; var distance: Int }
+    private var key: Key { Key(search: search, genre: genre, country: country, near: near?.coordinate, distance: distance) }
+    private var isFiltering: Bool { !search.isEmpty || !genre.isEmpty || country != nil || near != nil }
 
     var body: some View {
         ScrollView {
@@ -31,47 +28,57 @@ struct DiscoverArtistsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Eyebrow("Find your support act")
                     DisplayTitle("Discover artists", size: 32)
-                    Text("Real profiles from artists on Support Slot. Listener counts are self-reported.").dimBody(14)
+                    Text("Real profiles from artists on Support Slot. Listener counts are self-reported. Distances are rounded straight-line miles; artists’ exact positions are never shown.").dimBody(14)
                 }
-                HStack { Image(systemName: "magnifyingglass").foregroundStyle(Theme.paperDim); TextField("Search by name", text: $search).autocorrectionDisabled() }.fieldStyle()
+                HStack { Image(systemName: "magnifyingglass").foregroundStyle(Theme.paperDim); TextField("Search by name or place", text: $search).autocorrectionDisabled() }.fieldStyle()
                 HStack(spacing: 10) {
                     menu("Genre", $genre, [("", "Any genre")] + Catalog.genres.map { ($0, $0) })
-                    menu("Where", $location, [("", "Anywhere")] + Catalog.cities.map { ($0, $0) })
+                    menu("Nation", Binding(get: { country?.rawValue ?? "" }, set: { country = UKNation(rawValue: $0) }), [("", "Anywhere in the UK")] + UKNation.allCases.map { ($0.rawValue, $0.rawValue) })
                 }
-                if promoterCity != nil {
-                    menu("Distance", Binding(get: { String(distance) }, set: { distance = Int($0) ?? 0 }),
-                         [("0", "Any distance")] + SlotFilters.distanceOptions.map { (String($0), "Within \($0) miles of \(promoterCity!)") })
+                PlaceField(label: "Near (optional)", place: $near, hint: "Choose a town or city to see artists within a radius.")
+                if let near {
+                    menu("Within", Binding(get: { String(distance) }, set: { distance = Int($0) ?? 25 }), SlotFilters.distanceOptions.map { (String($0), "Within \($0) miles") })
+                    if !near.hasCoordinates { Banner(kind: .info, text: "“\(near.label)” was typed in, so it has no map position. Choose it from the search to filter by distance.") }
+                    Button("Clear location") { self.near = nil }.buttonStyle(.app(.outline, compact: true))
                 }
 
                 switch state {
                 case .loading where artists.isEmpty: LoadingView(label: "Loading artists…")
-                case .failed(let e): ErrorState(error: e) { Task { await load() } }
+                case .failed(let e): ErrorState(error: e) { Task { await reload() } }
                 default:
-                    if artists.isEmpty { EmptyState(title: "No artists on the platform yet", message: "Check back soon.") }
-                    else if filtered.isEmpty { EmptyState(title: "No artists match those filters", message: "Try widening your search or clearing a filter.") }
-                    else {
-                        Text("\(filtered.count) artist\(filtered.count == 1 ? "" : "s")").font(Theme.mono(11)).foregroundStyle(Theme.paperDim).textCase(.uppercase)
-                        ForEach(filtered) { a in
+                    if artists.isEmpty {
+                        EmptyState(title: isFiltering ? "No artists match those filters" : "No artists on the platform yet",
+                                   message: isFiltering ? "Try widening your search or clearing a filter. Artists who typed their place in have no map position and only appear without a distance filter." : "Check back soon.")
+                    } else {
+                        Text("\(total) artist\(total == 1 ? "" : "s")").font(Theme.mono(11)).foregroundStyle(Theme.paperDim).textCase(.uppercase)
+                        ForEach(artists) { a in
                             VStack(spacing: 0) {
                                 NavigationLink(value: a) { ArtistRow(artist: a) }.buttonStyle(.plain)
+                                if let miles = distances[a.id] { Text("About \(Geo.describe(miles: miles)) away (rounded up, straight line)").font(Theme.mono(10)).foregroundStyle(Theme.paperDim).textCase(.uppercase).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6) }
                                 HStack(spacing: 10) {
                                     Button { inviting = a } label: { Label("Invite to a gig", systemImage: "paperplane") }.buttonStyle(.app(.outline, compact: true))
                                     SaveToRosterButton(artistId: a.id)
                                 }
                                 .padding(.top, 8)
                             }
+                            .onAppear { if a.id == artists.last?.id { Task { await loadMore() } } }
                         }
+                        if loadingMore { LoadingView(label: "Loading more…") }
                     }
                 }
             }
             .padding(20)
         }
-        .refreshable { await load() }
+        .refreshable { await reload() }
         .screenBackground()
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: Artist.self) { ArtistProfileView(handle: $0.handle, preloaded: $0) }
         .toolbar { ToolbarItem(placement: .topBarTrailing) { NotificationsButton() } }
-        .task { await load() }
+        .task(id: key) {
+            try? await Task.sleep(nanoseconds: 300_000_000) // settle while typing
+            if Task.isCancelled { return }
+            await reload()
+        }
         .sheet(item: $inviting) { a in NavigationStack { InviteToGigSheet(artist: a) }.environment(store).presentationBackground(Theme.ink) }
     }
 
@@ -84,10 +91,32 @@ struct DiscoverArtistsView: View {
         .accessibilityLabel("\(label), \(options.first { $0.0 == selection.wrappedValue }?.1 ?? "")")
     }
 
-    private func load() async {
-        do { artists = try await store.db.allArtists(); state = .loaded }
-        catch is CancellationError {}
-        catch { if artists.isEmpty { state = .failed((error as? AppError) ?? .generic("We couldn’t load artists.")) } }
+    private func fetch(page: Int) async throws -> (hits: [ArtistSearchHit], artists: [Artist]) {
+        let centre = near?.coordinate
+        return try await store.db.searchArtists(q: search, genre: genre.isEmpty ? nil : genre, country: country?.rawValue, near: centre, maxMiles: centre == nil ? nil : distance,
+                                                sort: centre == nil ? "newest" : "distance", page: page)
+    }
+
+    private func reload() async {
+        do {
+            let r = try await fetch(page: 1)
+            artists = r.artists; page = 1; total = r.hits.first?.totalCount ?? 0
+            distances = Dictionary(uniqueKeysWithValues: r.hits.compactMap { h in h.distanceMiles.map { (h.id, $0) } })
+            state = .loaded
+        } catch is CancellationError {}
+        catch { if artists.isEmpty || state != .loaded { state = .failed((error as? AppError) ?? .generic("We couldn’t load artists.")) } }
+    }
+
+    private func loadMore() async {
+        guard state == .loaded, artists.count < total, !loadingMore else { return }
+        loadingMore = true; defer { loadingMore = false }
+        do {
+            let r = try await fetch(page: page + 1)
+            let known = Set(artists.map(\.id))
+            artists += r.artists.filter { !known.contains($0.id) }
+            for h in r.hits { if let d = h.distanceMiles { distances[h.id] = d } }
+            page += 1
+        } catch {}
     }
 }
 

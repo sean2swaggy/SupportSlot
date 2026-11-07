@@ -101,7 +101,8 @@ final class JWTTests: XCTestCase {
 
 final class AuthServiceTests: XCTestCase {
     private let key = "test-session"
-    override func tearDown() { Keychain.remove(key); super.tearDown() }
+    override func setUp() { super.setUp(); Keychain.remove(key); Keychain.remove(key + ".pkce") }
+    override func tearDown() { Keychain.remove(key); Keychain.remove(key + ".pkce"); super.tearDown() }
 
     private func makeAuth() -> AuthService { AuthService(transport: TestSupport.transport(), storageKey: key, restoreFromKeychain: false) }
 
@@ -172,17 +173,130 @@ final class AuthServiceTests: XCTestCase {
         XCTAssertNil(Keychain.get(key))
     }
 
-    func testCallbackLinkSignsInAndDetectsRecovery() async throws {
+    // MARK: Email links (PKCE)
+
+    private func requestBody(_ req: URLRequest) -> [String: Any] {
+        (try? JSONSerialization.jsonObject(with: req.httpBody ?? Data())) as? [String: Any] ?? [:]
+    }
+
+    func testPasswordResetSendsAS256ChallengeAndTheCallbackExchangesCodeWithTheMatchingVerifier() async throws {
         let auth = makeAuth()
-        StubURLProtocol.reset { _ in .json(["id": "user-1", "email": "a@example.com"]) }
-        let url = URL(string: "supportslot://auth-callback#access_token=\(TestSupport.token())&refresh_token=r1&expires_in=3600&type=recovery")!
-        let kind = await auth.handleCallback(url)
+        StubURLProtocol.reset { _ in .json([:]) }
+        try await auth.sendPasswordReset(email: "a@example.com")
+        let first = requestBody(StubURLProtocol.recorded[0])
+        XCTAssertEqual(first["code_challenge_method"] as? String, "s256")
+        let challenge = try XCTUnwrap(first["code_challenge"] as? String)
+
+        StubURLProtocol.reset { _ in .json(TestSupport.tokenJSON(access: TestSupport.token(), refresh: "pkce-refresh")) }
+        let kind = await auth.handleCallback(URL(string: "supportslot://auth-callback?code=abc123")!)
         XCTAssertEqual(kind, .recovery)
-        XCTAssertEqual(auth.session?.refreshToken, "r1")
+        XCTAssertEqual(auth.session?.refreshToken, "pkce-refresh")
+        let exchange = try XCTUnwrap(StubURLProtocol.recorded.first)
+        XCTAssertEqual(exchange.url?.query, "grant_type=pkce")
+        let body = requestBody(exchange)
+        XCTAssertEqual(body["auth_code"] as? String, "abc123")
+        let verifier = try XCTUnwrap(body["code_verifier"] as? String)
+        XCTAssertEqual(PKCEPair.challenge(for: verifier), challenge, "the verifier sent at exchange must hash to the challenge sent when the email was requested")
+    }
+
+    func testSignupConfirmationUsesPKCEToo() async throws {
+        let auth = makeAuth()
+        StubURLProtocol.reset { _ in .json(["id": "u1", "email": "a@example.com", "identities": [["id": "i"]]]) }
+        let outcome = try await auth.signUp(email: "a@example.com", password: "pw-123456", role: "artist")
+        XCTAssertEqual(outcome, .confirmationRequired)
+        let body = requestBody(StubURLProtocol.recorded[0])
+        XCTAssertNotNil(body["code_challenge"])
+        StubURLProtocol.reset { _ in .json(TestSupport.tokenJSON()) }
+        let kind = await auth.handleCallback(URL(string: "supportslot://auth-callback?code=zzz")!)
+        XCTAssertEqual(kind, .signedIn)
+    }
+
+    func testAForgedLinkWithReadyMadeTokensSignsNobodyIn() async {
+        let auth = makeAuth()
+        StubURLProtocol.reset { _ in XCTFail("no network call should be made"); return .json([:]) }
+        let kind = await auth.handleCallback(URL(string: "supportslot://auth-callback#access_token=\(TestSupport.token())&refresh_token=evil&type=recovery")!)
+        if case .failed = kind {} else { XCTFail("expected a refusal, got \(kind)") }
+        XCTAssertNil(auth.session)
+        XCTAssertTrue(StubURLProtocol.recorded.isEmpty)
+    }
+
+    func testACodeThisDeviceNeverAskedForIsRefusedWithoutANetworkCall() async {
+        let auth = makeAuth()
+        StubURLProtocol.reset { _ in XCTFail("no network call should be made"); return .json([:]) }
+        let kind = await auth.handleCallback(URL(string: "supportslot://auth-callback?code=attackers-code")!)
+        if case .failed(let m) = kind { XCTAssertTrue(m.contains("wasn’t requested from this device")) } else { XCTFail() }
+        XCTAssertNil(auth.session)
+        XCTAssertTrue(StubURLProtocol.recorded.isEmpty)
+    }
+
+    func testALinkWorksOnceAndTheVerifierIsSpent() async throws {
+        let auth = makeAuth()
+        StubURLProtocol.reset { _ in .json([:]) }
+        try await auth.sendPasswordReset(email: "a@example.com")
+        StubURLProtocol.reset { _ in .json(TestSupport.tokenJSON()) }
+        let first = await auth.handleCallback(URL(string: "supportslot://auth-callback?code=one")!)
+        XCTAssertEqual(first, .recovery)
+        StubURLProtocol.reset { _ in XCTFail("a reused link must not reach the network"); return .json([:]) }
+        let second = await auth.handleCallback(URL(string: "supportslot://auth-callback?code=one")!)
+        if case .failed = second {} else { XCTFail("a reused link must fail") }
+    }
+
+    func testAnExpiredPendingFlowIsRefusedAndAServerRejectionIsReportedAsExpired() async throws {
+        let auth = makeAuth()
+        StubURLProtocol.reset { _ in .json([:]) }
+        try await auth.sendPasswordReset(email: "a@example.com")
+        StubURLProtocol.reset { _ in XCTFail("expired locally"); return .json([:]) }
+        let later = Date().addingTimeInterval(PendingAuthFlow.lifetime + 60)
+        let expired = await auth.handleCallback(URL(string: "supportslot://auth-callback?code=late")!, now: later)
+        if case .failed(let m) = expired { XCTAssertTrue(m.contains("expired")) } else { XCTFail() }
+
+        StubURLProtocol.reset { _ in .json([:]) }
+        try await auth.sendPasswordReset(email: "a@example.com")
+        StubURLProtocol.reset { _ in .json(["error_code": "flow_state_expired", "msg": "flow state expired"], status: 400) }
+        let rejected = await auth.handleCallback(URL(string: "supportslot://auth-callback?code=old")!)
+        if case .failed(let m) = rejected { XCTAssertTrue(m.contains("expired or was already used")) } else { XCTFail() }
+        XCTAssertNil(auth.session)
+    }
+
+    func testServerReportedLinkErrorsAndForeignURLs() async throws {
+        let auth = makeAuth()
         let other = await auth.handleCallback(URL(string: "https://example.com/x")!)
         XCTAssertEqual(other, .notAuthLink)
-        let expired = await auth.handleCallback(URL(string: "supportslot://auth-callback#error=access_denied&error_description=Email+link+is+invalid+or+has+expired")!)
+        let wrongHost = await auth.handleCallback(URL(string: "supportslot://somewhere-else?code=x")!)
+        XCTAssertEqual(wrongHost, .notAuthLink)
+        let expired = await auth.handleCallback(URL(string: "supportslot://auth-callback?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired")!)
         if case .failed(let m) = expired { XCTAssertTrue(m.contains("expired")) } else { XCTFail() }
+    }
+
+    func testRFC7636ChallengeVector() {
+        XCTAssertEqual(PKCEPair.challenge(for: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+        let a = PKCEPair.generate(), b = PKCEPair.generate()
+        XCTAssertNotEqual(a.verifier, b.verifier)
+        XCTAssertGreaterThanOrEqual(a.verifier.count, 43)
+        XCTAssertLessThanOrEqual(a.verifier.count, 128)
+        XCTAssertFalse(a.verifier.contains("=") || a.verifier.contains("+") || a.verifier.contains("/"))
+    }
+
+    func testSigningOutForgetsAPendingFlow() async throws {
+        let auth = makeAuth()
+        StubURLProtocol.reset { _ in .json([:]) }
+        try await auth.sendPasswordReset(email: "a@example.com")
+        await auth.signOut()
+        StubURLProtocol.reset { _ in XCTFail("no call"); return .json([:]) }
+        let kind = await auth.handleCallback(URL(string: "supportslot://auth-callback?code=x")!)
+        if case .failed = kind {} else { XCTFail() }
+    }
+
+    func testMFAVerifyRefusesATokenThatIsNotReallyAal2() async throws {
+        let auth = makeAuth()
+        StubURLProtocol.reset { _ in .json(TestSupport.tokenJSON(factors: [["id": "f1", "factor_type": "totp", "status": "verified"]])) }
+        try await auth.signIn(email: "a@example.com", password: "pw-123456")
+        StubURLProtocol.reset { req in
+            if req.url!.path.hasSuffix("/challenge") { return .json(["id": "ch1", "expires_at": 1_900_000_000]) }
+            return .json(TestSupport.tokenJSON(access: TestSupport.token(aal: "aal1"), refresh: "still-aal1"))
+        }
+        do { try await auth.verifyTOTP(factorID: "f1", code: "123456"); XCTFail("an aal1 token must not count as verified") } catch {}
+        XCTAssertFalse(auth.session!.isAAL2)
     }
 
     func testMFAVerifyUpgradesTheSession() async throws {
@@ -216,7 +330,8 @@ final class AuthServiceTests: XCTestCase {
 
 final class DatabaseTests: XCTestCase {
     private let key = "test-session-db"
-    override func tearDown() { Keychain.remove(key); super.tearDown() }
+    override func setUp() { super.setUp(); Keychain.remove(key); Keychain.remove(key + ".pkce") }
+    override func tearDown() { Keychain.remove(key); Keychain.remove(key + ".pkce"); super.tearDown() }
 
     private func makeDB(signedIn: Bool) async throws -> (Database, AuthService) {
         let t = TestSupport.transport()

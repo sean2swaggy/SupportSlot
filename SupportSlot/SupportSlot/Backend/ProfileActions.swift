@@ -3,11 +3,10 @@ import Foundation
 extension Database {
     // MARK: Artist profile
 
-    func updateArtistBasics(id: ID, name: String, location: String, genres: [String], bio: String, availability: String,
+    func updateArtistBasics(id: ID, name: String, genres: [String], bio: String, availability: String,
                             travelRadiusMiles: Int, artistSize: String, liveVideoUrl: String?) async throws {
         let rows = try await update(Query("artists").eq("id", id), [
             "name": .string(name),
-            "location": .string(location),
             "genres": .strings(genres),
             "bio": .string(bio),
             "availability": .string(availability),
@@ -69,9 +68,9 @@ extension Database {
 
     // MARK: Promoter profile
 
-    func updatePromoter(id: ID, company: String, location: String, avatarUrl: String?) async throws {
+    func updatePromoter(id: ID, company: String, avatarUrl: String?) async throws {
         let rows = try await update(Query("promoters").eq("id", id), [
-            "name": .string(company), "company": .string(company), "location": .string(location), "avatar_url": .optional(avatarUrl),
+            "name": .string(company), "company": .string(company), "avatar_url": .optional(avatarUrl),
         ] as Patch)
         if rows.isEmpty { throw AppError("Your details couldn’t be saved.") }
     }

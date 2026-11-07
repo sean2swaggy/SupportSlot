@@ -5,6 +5,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         @Bindable var store = store
@@ -22,6 +23,8 @@ struct RootView: View {
             case .ready: MainShell()
             }
         }
+        .id(typeSize) // fonts are sized from Dynamic Type when a view is built; rebuild if the setting changes
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2) // the largest sizes stop being usable in dense rows
         .preferredColorScheme(.dark)
         .tint(Theme.acid)
         .sheet(isPresented: Binding(get: { store.pendingPasswordReset && store.phase == .ready }, set: { if !$0 { store.pendingPasswordReset = false } })) {

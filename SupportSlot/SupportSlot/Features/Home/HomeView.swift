@@ -60,8 +60,8 @@ struct HomeView: View {
                 Button("Create an account or log in", action: onLogin).buttonStyle(.app(.ghost))
             }
             VStack(alignment: .leading, spacing: 8) {
-                MonoLabel("Now booking in")
-                FlowLayout(spacing: 6) { ForEach(Catalog.cities, id: \.self) { Tag($0) } }
+                MonoLabel("Across the UK")
+                FlowLayout(spacing: 6) { ForEach(UKNation.allCases) { Tag($0.rawValue) } }
             }
         }
         .padding(.horizontal, 20).padding(.top, 8)

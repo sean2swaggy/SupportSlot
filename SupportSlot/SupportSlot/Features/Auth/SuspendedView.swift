@@ -12,7 +12,7 @@ struct SuspendedView: View {
                 Eyebrow("Account", color: Theme.signal)
                 DisplayTitle("This account is suspended", size: 30)
                 Text("You can’t apply, post or message while an account is suspended. Anything you had in progress was left as it was.").dimBody()
-                if let reason = store.profile?.suspensionReason, !reason.isEmpty {
+                if let reason = store.account?.suspensionReason, !reason.isEmpty {
                     Card(accent: Theme.signal.opacity(0.5)) {
                         VStack(alignment: .leading, spacing: 6) { MonoLabel("Reason given"); Text(reason).font(Theme.body(15)).foregroundStyle(Theme.paper) }
                     }

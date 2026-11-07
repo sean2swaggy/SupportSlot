@@ -2,7 +2,10 @@ import Foundation
 import Observation
 
 /// The app's shared state: who is signed in, their profile and role, and the
-/// data every signed-in screen needs. Writes go through `perform`, which always
+/// data every signed-in screen needs. The database refuses everything except
+/// the sign-in/2FA calls until the session is aal2 (verified second factor),
+/// so the order here is: sign in → authenticator → account status → set-up →
+/// the app. Writes go through `perform`, which always
 /// re-reads from the server afterwards (success or failure) so the screen shows
 /// the truth rather than a guess. If the first load fails, `phase` is
 /// `.loadFailed` (a retry screen) — never an empty dashboard.
@@ -18,10 +21,10 @@ final class AppStore {
         case needsConfig
         case launching
         case signedOut
-        case onboarding
         case mfaSetup
         case mfaChallenge
         case suspended
+        case onboarding
         case ready
         case loadFailed(AppError)
     }
@@ -34,6 +37,12 @@ final class AppStore {
     // Session and profile
     private(set) var session: AuthSession?
     private(set) var profile: Profile?
+    /// Who the database says this session is (role, set-up done, suspended). Only available at aal2.
+    private(set) var account: AccountStatus?
+    /// The signed-in artist's own private, ~1 km-rounded position (nobody else can read it).
+    private(set) var myCoordinate: Coordinate?
+    /// Set when the database insists on a second factor even though our token says otherwise.
+    private var forceChallenge = false
     private(set) var artist: Artist?
     private(set) var promoter: Promoter?
 
@@ -90,20 +99,21 @@ final class AppStore {
     var phase: Phase {
         guard isConfigured else { return .needsConfig }
         guard let session else { return .signedOut }
-        guard let profile else { return loadError.map(Phase.loadFailed) ?? .launching }
-        if !profile.hasOnboarded { return .onboarding }
+        // Second factor first: before aal2 the database serves nothing, so nothing else can be known.
         if !session.user.hasVerifiedTOTP { return .mfaSetup }
-        if !session.isAAL2 { return .mfaChallenge }
-        if profile.isSuspended { return .suspended }
+        if !session.isAAL2 || forceChallenge { return .mfaChallenge }
+        guard let account else { return loadError.map(Phase.loadFailed) ?? .launching }
+        if account.suspended { return .suspended }
+        if !account.hasOnboarded { return .onboarding }
         if hasLoadedOnce == false { return loadError.map(Phase.loadFailed) ?? .launching }
         return .ready
     }
 
     var userId: ID? { session?.user.id }
-    var role: UserRole { profile?.userRole ?? .artist }
+    var role: UserRole { (profile?.userRole ?? account.flatMap { UserRole(rawValue: $0.role) }) ?? .artist }
     var isSignedIn: Bool { session != nil }
     var accountEmail: String? { session?.user.email ?? profile?.email }
-    var adminRole: String? { profile?.adminRole }
+    var adminRole: String? { profile?.adminRole ?? account?.adminRole }
     var unreadNotificationCount: Int { notifications.filter { !$0.read }.count }
     var unreadThreadCount: Int { threads.filter(\.unread).count }
 
@@ -126,6 +136,8 @@ final class AppStore {
 
     private func sessionChanged(_ new: AuthSession?) {
         let previousUser = session?.user.id
+        // A verified code gives a fresh aal2 token: stop forcing the challenge.
+        if new?.isAAL2 == true, session?.isAAL2 != true { forceChallenge = false }
         session = new
         guard let new else {
             resetSignedInState()
@@ -139,7 +151,8 @@ final class AppStore {
     }
 
     private func resetSignedInState() {
-        profile = nil; artist = nil; promoter = nil
+        profile = nil; account = nil; myCoordinate = nil; forceChallenge = false
+        artist = nil; promoter = nil
         applications = []; bookings = []; notifications = []; threads = []
         savedSlotIDs = []; myListings = []
         loadError = nil; hasLoadedOnce = false
@@ -160,17 +173,28 @@ final class AppStore {
     /// Re-reads everything the signed-in screens show. Safe to call often.
     func refresh() async {
         guard isConfigured, let session, !refreshing else { return }
+        // A password-only session can't read anything (the database refuses it); don't try.
+        guard session.isAAL2, session.user.hasVerifiedTOTP else { account = nil; return }
         refreshing = true
         defer { refreshing = false }
         let uid = session.user.id
         do {
-            await db.refreshExpiredOffers()
-            let profile = try await loadProfile(uid)
-            self.profile = profile
-            guard profile.hasOnboarded else {
+            let status = try await db.accountStatus()
+            account = status
+            forceChallenge = false
+            if status.suspended {
+                // Everything else is refused for a suspended account; show the suspension screen.
                 loadError = nil
                 return
             }
+            if !status.hasOnboarded {
+                profile = nil
+                loadError = nil
+                return
+            }
+            await db.refreshExpiredOffers()
+            let profile = try await loadProfile(uid)
+            self.profile = profile
             let role = profile.userRole
             async let notifications = db.notifications(profileId: uid)
             async let saved = db.savedSlotIDs(profileId: uid)
@@ -181,8 +205,10 @@ final class AppStore {
             case .artist:
                 async let artist = db.artist(id: uid)
                 async let apps = db.artistApplications(artistId: uid)
+                async let coordinate = db.myCoordinate(artistId: uid)
                 self.artist = try await artist
                 self.applications = try await apps
+                self.myCoordinate = try await coordinate
             case .promoter:
                 async let promoter = db.promoter(id: uid)
                 async let apps = db.promoterApplications()
@@ -200,8 +226,14 @@ final class AppStore {
         } catch is CancellationError {
             return
         } catch let error as AppError {
-            // Keep what we already have on screen; only the very first load is a hard failure.
             if error == .sessionExpired { await auth.signOut(); return }
+            if error.code == "mfa_required" {
+                // Our token says aal2 but the database disagrees: get fresh claims once, then ask for the code again.
+                _ = try? await auth.refresh()
+                forceChallenge = true
+                return
+            }
+            // Keep what we already have on screen; only the very first load is a hard failure.
             loadError = error
         } catch {
             loadError = AppError.generic()

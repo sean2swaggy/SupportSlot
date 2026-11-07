@@ -131,6 +131,12 @@ final class CSVTests: XCTestCase {
         XCTAssertEqual(CSV.field("@sum"), "'@sum")
         XCTAssertEqual(CSV.field("Plain"), "Plain")
         XCTAssertEqual(CSV.field("a,b"), "\"a,b\"")
+        XCTAssertEqual(CSV.field("line one\nline two"), "\"line one\nline two\"")
+        XCTAssertEqual(CSV.field("carriage\rreturn"), "\"carriage\rreturn\"")
+        XCTAssertEqual(CSV.field("say \"hi\", then =leave"), "\"say \"\"hi\"\", then =leave\"")
+        XCTAssertEqual(CSV.field("\t=1+1"), "'\t=1+1")
+        XCTAssertEqual(CSV.field(""), "")
+        XCTAssertEqual(CSV.field("Zoë & The Ünicode Band"), "Zoë & The Ünicode Band")
         XCTAssertEqual(CSV.pounds(15050), "150.50")
         XCTAssertEqual(CSV.pounds(5), "0.05")
     }

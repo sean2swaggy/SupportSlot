@@ -6,6 +6,13 @@ import Foundation
 extension Database {
     // MARK: Profiles
 
+    /// Role, set-up and suspension for the signed-in account (aal2 only; works while suspended).
+    func accountStatus() async throws -> AccountStatus {
+        let rows: [AccountStatus] = try await rpc("my_account_status", [:])
+        guard let row = rows.first else { throw AppError.sessionExpired }
+        return row
+    }
+
     func profile(id: ID) async throws -> Profile? {
         try await selectOne(Query("profiles", Profile.columns).eq("id", id))
     }
@@ -38,6 +45,10 @@ extension Database {
         try await select(Query("venues", Venue.columns).order("name"))
     }
 
+    func venue(id: String) async throws -> Venue? {
+        try await selectOne(Query("venues", Venue.columns).eq("id", id))
+    }
+
     func slot(id: ID) async throws -> Slot? {
         try await selectOne(Query("slots", Slot.columns).eq("id", id))
     }
@@ -62,14 +73,15 @@ extension Database {
         let q = s.q.trimmingCharacters(in: .whitespacesAndNewlines)
         let hits: [SearchHit] = try await rpc("search_slots", [
             "p_q": q.isEmpty ? .null : .string(q),
-            "p_city": .optional(s.city),
+            "p_country": .optional(s.country),
             "p_genre": .optional(s.genre),
             "p_from": .optional(s.from),
             "p_to": .optional(s.to),
             "p_min_fee": .optional(s.minFee),
             "p_venue_size": .optional(s.venueSize),
             "p_artist_size": .optional(s.artistSize),
-            "p_from_city": .optional(s.fromCity),
+            "p_near_lat": .optional(s.near?.lat),
+            "p_near_lon": .optional(s.near?.lon),
             "p_max_miles": .optional(s.maxMiles),
             "p_urgent_only": .bool(s.urgentOnly),
             "p_sort": .string(s.sort),
@@ -80,7 +92,9 @@ extension Database {
         let rows: [Slot] = try await select(Query("slots", Slot.columns).in("id", hits.map(\.id)))
         let byId = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
         // The function decides the order; keep it.
-        return SlotSearchResult(slots: hits.compactMap { byId[$0.id] }, total: total, page: page, pageSize: pageSize)
+        var distances: [ID: Double] = [:]
+        for h in hits { if let d = h.distanceMiles { distances[h.id] = d } }
+        return SlotSearchResult(slots: hits.compactMap { byId[$0.id] }, distances: distances, total: total, page: page, pageSize: pageSize)
     }
 
     func slots(ids: [ID]) async throws -> [Slot] {
@@ -126,6 +140,40 @@ extension Database {
 
     func savedSlotIDs(profileId: ID) async throws -> [ID] {
         try await select(Query("saved_slots", SavedSlot.columns).eq("profile_id", profileId), as: SavedSlot.self).map(\.slotId)
+    }
+
+    // MARK: Places and travel terms
+
+    /// The signed-in artist's own private (rounded) coordinates, if they chose a place with a map position.
+    func myCoordinate(artistId: ID) async throws -> Coordinate? {
+        let row: ArtistLocationRow? = try await selectOne(Query("artist_locations", ArtistLocationRow.columns).eq("artist_id", artistId))
+        return row?.coordinate
+    }
+
+    /// What an offer on this listing would contain, computed by the database
+    /// (the artist's own terms, or — for a promoter — an applicant's).
+    func termsPreview(slotId: ID, artistId: ID? = nil) async throws -> TermsPreview? {
+        let rows: [TermsPreview] = try await rpc("terms_preview", ["p_slot_id": .string(slotId), "p_artist_id": .optional(artistId)])
+        return rows.first
+    }
+
+    /// Artist search for promoters. Distances come back rounded up to 5 miles.
+    func searchArtists(q: String, genre: String?, country: String?, near: Coordinate?, maxMiles: Int?, sort: String, page: Int, pageSize: Int = 24) async throws -> (hits: [ArtistSearchHit], artists: [Artist]) {
+        let hits: [ArtistSearchHit] = try await rpc("search_artists", [
+            "p_q": q.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(q.trimmingCharacters(in: .whitespaces)),
+            "p_genre": .optional(genre),
+            "p_country": .optional(country),
+            "p_near_lat": .optional(near?.lat),
+            "p_near_lon": .optional(near?.lon),
+            "p_max_miles": .optional(maxMiles),
+            "p_sort": .string(sort),
+            "p_limit": .int(pageSize),
+            "p_offset": .int(max(page - 1, 0) * pageSize),
+        ])
+        if hits.isEmpty { return ([], []) }
+        let rows: [Artist] = try await select(Query("artists", Artist.listWithTracksColumns).in("id", hits.map(\.id)))
+        let byId = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+        return (hits, hits.compactMap { byId[$0.id] })
     }
 
     // MARK: Blocking

@@ -69,6 +69,7 @@ enum JSONValue: Encodable, Equatable, ExpressibleByStringLiteral, ExpressibleByI
 
     static func optional(_ s: String?) -> JSONValue { s.map { .string($0) } ?? .null }
     static func optional(_ i: Int?) -> JSONValue { i.map { .int($0) } ?? .null }
+    static func optional(_ d: Double?) -> JSONValue { d.map { .double($0) } ?? .null }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()

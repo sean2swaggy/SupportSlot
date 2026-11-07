@@ -101,14 +101,14 @@ struct PromoterDetailsView: View {
     @Environment(AppStore.self) private var store
     let promoter: Promoter
     @State private var company: String
-    @State private var city: String
+    @State private var place: Place?
     @State private var avatar: String?
     @State private var error: String?
     @State private var saved = false
 
     init(promoter: Promoter) {
         self.promoter = promoter
-        _company = State(initialValue: promoter.company); _city = State(initialValue: promoter.location ?? Catalog.cities[0]); _avatar = State(initialValue: promoter.avatarUrl)
+        _company = State(initialValue: promoter.company); _place = State(initialValue: promoter.place); _avatar = State(initialValue: promoter.avatarUrl)
     }
 
     var body: some View {
@@ -118,11 +118,7 @@ struct PromoterDetailsView: View {
                 Text("This appears on every slot you post.").dimBody(14)
                 PhotoField(label: "Profile photo", imageUrl: $avatar, maxDimension: 640)
                 LabeledField(label: "Company / collective name") { TextField("Your company", text: $company).fieldStyle() }
-                LabeledField(label: "Based in") {
-                    Menu {
-                        Picker("City", selection: $city) { ForEach(Catalog.cities, id: \.self) { Text($0).tag($0) } }
-                    } label: { HStack { Text(city).foregroundStyle(Theme.paper); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(Theme.paperDim) }.fieldStyle() }
-                }
+                PlaceField(label: "Based in", place: $place, hint: "Shown on your promoter page. Your listings use their venue’s place.")
                 if saved { Text("Saved ✓").font(Theme.mono(11)).foregroundStyle(Theme.ok).textCase(.uppercase) }
                 if let error { Banner(kind: .error, text: error) }
                 AsyncButton { await save() } label: { Text("Save") }
@@ -138,7 +134,8 @@ struct PromoterDetailsView: View {
         error = nil; saved = false
         let name = company.trimmingCharacters(in: .whitespacesAndNewlines)
         if name.isEmpty { error = "Enter your company or collective name."; return }
-        do { try await store.perform { try await store.db.updatePromoter(id: promoter.id, company: name, location: city, avatarUrl: avatar) }; saved = true }
+        do { try await store.perform { try await store.db.updatePromoter(id: promoter.id, company: name, avatarUrl: avatar)
+            if let place, place != promoter.place { try await store.db.setMyLocation(place) } }; saved = true }
         catch { self.error = (error as? AppError)?.message }
     }
 }

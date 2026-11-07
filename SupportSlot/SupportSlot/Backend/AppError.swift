@@ -33,6 +33,9 @@ struct AppError: Error, LocalizedError, Equatable {
 enum ErrorMapper {
     private static let messages: [(pattern: String, text: String, options: NSRegularExpression.Options)] = [
         ("not_authenticated", "Your session has expired. Please log in again.", []),
+        ("mfa_required", "Please enter the code from your authenticator app to continue.", []),
+        ("location_invalid", "That location isn't valid. Choose a place from the search, or type in a town and nation.", []),
+        ("venue_invalid|profile_required", "That venue or profile isn't complete.", []),
         ("account_suspended", "This account is suspended, so that action isn't available. Contact support if you think that's a mistake.", []),
         ("not_authorized", "You don't have permission to do that.", []),
         ("application_not_found|listing_not_found|thread_not_found", "That item no longer exists.", []),
@@ -55,7 +58,7 @@ enum ErrorMapper {
     /// Codes whose message already carries a human sentence after the colon
     /// (e.g. "slot_invalid: the show date is in the past").
     private static let passThrough = try! NSRegularExpression(
-        pattern: "^(slot_invalid|application_invalid|message_invalid|profile_invalid|offer_invalid|cancel_invalid|report_invalid|support_invalid|invalid_transition|rate_limited|blocked): ?([\\s\\S]+)$")
+        pattern: "^(location_invalid|venue_invalid|invitation_invalid|availability_invalid|thread_invalid|notification_invalid|slot_invalid|application_invalid|message_invalid|profile_invalid|offer_invalid|cancel_invalid|report_invalid|support_invalid|invalid_transition|rate_limited|blocked): ?([\\s\\S]+)$")
 
     static func friendly(_ raw: String, fallback: String = "Something went wrong. Please try again.") -> String {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)

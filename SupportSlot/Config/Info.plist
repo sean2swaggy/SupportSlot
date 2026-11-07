@@ -33,6 +33,8 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Support Slot uses your location only when you tap “Use my current location”, to fill in the town you’re in. It isn’t tracked, and your exact position isn’t stored — it’s rounded to about 1 km.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

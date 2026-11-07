@@ -14,10 +14,14 @@ struct ListingFormView: View {
     @State private var venues: [Venue] = []
     @State private var venuesError: AppError?
     @State private var showPreview = false
+    @State private var pickingVenue = false
     @State private var submitted = false          // show field errors after the first attempt
     @State private var error: String?
     @State private var publishedId: ID?
     @State private var imagesLoaded = false
+    @State private var initial: ListingDraft
+    @State private var initialImages: [String?]
+    @State private var confirmDiscard = false
 
     init(editing: Slot? = nil) {
         self.editing = editing
@@ -33,6 +37,8 @@ struct ListingFormView: View {
             d.applicationDeadline = UKDates.adding(days: 7, to: UKDates.today())
         }
         _draft = State(initialValue: d)
+        _initial = State(initialValue: d)
+        _initialImages = State(initialValue: [editing?.headlinerImageUrl, editing?.artistPhotoUrl])
         _headlinerImage = State(initialValue: editing?.headlinerImageUrl)
         _artistPhoto = State(initialValue: editing?.artistPhotoUrl)
     }
@@ -46,6 +52,8 @@ struct ListingFormView: View {
     }
     private func show(_ f: ListingField) -> String? { submitted ? errors[f] : nil }
     private var venue: Venue? { venues.first { $0.id == draft.venueId } }
+    /// Anything typed or chosen that hasn't been published/saved yet.
+    private var hasUnsavedChanges: Bool { publishedId == nil && (draft != initial || [headlinerImage, artistPhoto] != initialImages) }
 
     var body: some View {
         ScrollView {
@@ -56,9 +64,25 @@ struct ListingFormView: View {
         .scrollDismissesKeyboard(.interactively)
         .screenBackground()
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(hasUnsavedChanges)
+        .toolbar {
+            if hasUnsavedChanges {
+                ToolbarItem(placement: .topBarLeading) { Button { confirmDiscard = true } label: { Label("Back", systemImage: "chevron.left") }.accessibilityHint("Asks before discarding your changes") }
+            }
+        }
+        .confirmationDialog("Discard your changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+            Button("Discard changes", role: .destructive) { dismiss() }
+            Button("Keep editing", role: .cancel) {}
+        } message: { Text("This listing hasn’t been \(editing == nil ? "published" : "saved") yet.") }
+        .sheet(isPresented: $pickingVenue) {
+            VenuePickerSheet(venues: venues, selectedId: draft.venueId,
+                             onSelect: { draft.venueId = $0.id },
+                             onAdded: { v in venues.append(v); draft.venueId = v.id })
+                .environment(store).presentationBackground(Theme.ink)
+        }
         .task {
             await loadVenues()
-            if let editing, !imagesLoaded, let full = try? await store.db.slot(id: editing.id) { headlinerImage = full.headlinerImageUrl; artistPhoto = full.artistPhotoUrl; imagesLoaded = true }
+            if let editing, !imagesLoaded, let full = try? await store.db.slot(id: editing.id) { headlinerImage = full.headlinerImageUrl; artistPhoto = full.artistPhotoUrl; initialImages = [full.headlinerImageUrl, full.artistPhotoUrl]; imagesLoaded = true }
         }
     }
 
@@ -82,13 +106,13 @@ struct ListingFormView: View {
             PhotoField(label: "Poster image (optional)", imageUrl: $headlinerImage, maxDimension: 1000, square: false, height: 90)
             PhotoField(label: "Reference photo of the artist you’re picturing (optional)", imageUrl: $artistPhoto, maxDimension: 800, square: false, height: 90)
 
-            LabeledField(label: "Venue", error: show(.venueId)) {
-                Menu {
-                    Picker("Venue", selection: $draft.venueId) { Text("Choose a venue").tag(""); ForEach(venues) { Text("\($0.name), \($0.city)").tag($0.id) } }
-                } label: {
-                    HStack { Text(venue.map { "\($0.name), \($0.city)" } ?? "Choose a venue").foregroundStyle(venue == nil ? Theme.paperDim : Theme.paper); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(Theme.paperDim) }
+            LabeledField(label: "Venue", error: show(.venueId), hint: "Any venue in the UK. Add yours if it isn’t listed. The listing takes its place from the venue.") {
+                Button { pickingVenue = true } label: {
+                    HStack { Text(venue.map { "\($0.name), \($0.city)" } ?? "Choose a venue").foregroundStyle(venue == nil ? Theme.paperDim : Theme.paper).multilineTextAlignment(.leading); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(Theme.paperDim) }
                         .fieldStyle(invalid: show(.venueId) != nil)
-                }.disabled(locked)
+                }
+                .buttonStyle(.plain).disabled(locked)
+                .accessibilityLabel("Venue: \(venue.map { "\($0.name), \($0.city)" } ?? "not chosen")")
             }
             LabeledField(label: "Show date", error: show(.date)) { ISODatePicker(title: "Show date", iso: $draft.date).disabled(locked) }
             HStack(spacing: 12) {
@@ -106,7 +130,7 @@ struct ListingFormView: View {
                 LabeledField(label: "Support fee (£)", error: show(.supportFee)) { IntField(value: $draft.supportFee, placeholder: "150", invalid: show(.supportFee) != nil).disabled(locked) }
                 LabeledField(label: "Travel (£)", error: show(.travelContribution)) { IntField(value: $draft.travelContribution, placeholder: "20", invalid: show(.travelContribution) != nil).disabled(locked) }
             }
-            Text("You pay the artist directly if you book them — Support Slot doesn’t handle payment. For an artist travelling over an hour, travel is raised to a £10 minimum automatically.")
+            Text("You pay the artist directly if you book them — Support Slot doesn’t handle payment. If the artist’s base is more than \(Travel.longJourneyMiles) miles from the venue in a straight line (or we can’t tell), travel is raised to a \(Money.pence(Travel.minimumLongTravelPence)) minimum automatically. That’s a distance rule, not a journey time.")
                 .font(Theme.body(12)).foregroundStyle(Theme.paperDim)
 
             LabeledField(label: "Applications close", error: show(.applicationDeadline)) { ISODatePicker(title: "Applications close", iso: $draft.applicationDeadline) }
@@ -185,11 +209,11 @@ struct ListingFormView: View {
         guard let venue else { error = "Choose a venue."; return }
         do {
             if let editing {
-                try await store.perform { try await store.db.updateListing(id: editing.id, draft, city: venue.city, headlinerImage: headlinerImage, artistPhoto: artistPhoto) }
+                try await store.perform { try await store.db.updateListing(id: editing.id, draft, headlinerImage: headlinerImage, artistPhoto: artistPhoto) }
                 publishedId = editing.id
             } else {
                 guard let uid = store.userId else { error = AppError.sessionExpired.message; return }
-                publishedId = try await store.perform { try await store.db.createListing(promoterId: uid, draft, city: venue.city, headlinerImage: headlinerImage, artistPhoto: artistPhoto) }
+                publishedId = try await store.perform { try await store.db.createListing(promoterId: uid, draft, headlinerImage: headlinerImage, artistPhoto: artistPhoto) }
             }
         } catch { self.error = (error as? AppError)?.message ?? "We couldn’t save your listing." }
     }

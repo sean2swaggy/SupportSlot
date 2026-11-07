@@ -30,8 +30,11 @@ struct Fit: Equatable {
         signals.reduce(0) { $0 + ($1.state == .match ? 10 : $1.state == .partial ? 4 : 0) }
     }
 
+    /// `distanceMiles` is the straight-line distance when both places have
+    /// coordinates, nil otherwise (then location is reported as unknown unless
+    /// the places are literally the same).
     static func explain(artistGenres: [String], artistLocation: String, travelRadiusMiles: Int, artistSize: String,
-                        slotGenres: [String], slotCity: String, slotSizeFit: [String]) -> Fit {
+                        slotGenres: [String], slotCity: String, slotSizeFit: [String], distanceMiles: Int? = nil) -> Fit {
         var signals: [Signal] = []
 
         // Genre
@@ -47,17 +50,19 @@ struct Fit: Equatable {
             }
         }
 
-        // Location / travel
+        // Location / travel — straight-line distance only; never a journey time.
         if artistLocation == slotCity {
             signals.append(Signal(key: .location, label: "Location", state: .match, detail: "You're based in \(slotCity)."))
-        } else {
-            let miles = Travel.miles(artistLocation, slotCity)
+        } else if let miles = distanceMiles {
             let within = miles <= travelRadiusMiles
             signals.append(Signal(
                 key: .location, label: "Location", state: within ? .partial : .mismatch,
                 detail: within
-                    ? "About \(miles) miles from \(artistLocation), within the \(travelRadiusMiles)-mile travel radius you set."
-                    : "About \(miles) miles from \(artistLocation), beyond the \(travelRadiusMiles)-mile travel radius you set."))
+                    ? "About \(Geo.describe(miles: miles)) from \(artistLocation) in a straight line, within the \(travelRadiusMiles)-mile travel radius you set."
+                    : "About \(Geo.describe(miles: miles)) from \(artistLocation) in a straight line, beyond the \(travelRadiusMiles)-mile travel radius you set."))
+        } else {
+            signals.append(Signal(key: .location, label: "Location", state: .unknown,
+                                  detail: "We can’t compare \(artistLocation) with \(slotCity) because one of them has no map position. Choose a place from the search to see this."))
         }
 
         // Artist size
@@ -75,8 +80,12 @@ struct Fit: Equatable {
         return Fit(signals: signals, matched: matched, assessed: assessed, summary: summary)
     }
 
-    static func explain(artist: Artist, slot: Slot) -> Fit {
-        explain(artistGenres: artist.genres, artistLocation: artist.location, travelRadiusMiles: artist.travelRadiusMiles, artistSize: artist.artistSize,
-                slotGenres: slot.genres, slotCity: slot.city, slotSizeFit: slot.artistSizeFit)
+    /// `artistCoordinate` is the artist's OWN private position (only they can read it).
+    /// A promoter can't read an artist's position; `approxDistanceMiles` is the database's
+    /// answer (rounded up to 5 miles) from `terms_preview`.
+    static func explain(artist: Artist, slot: Slot, artistCoordinate: Coordinate? = nil, approxDistanceMiles: Int? = nil) -> Fit {
+        let miles = approxDistanceMiles ?? artistCoordinate.flatMap { a in slot.coordinate.map { Int(Geo.miles(a, $0).rounded()) } }
+        return explain(artistGenres: artist.genres, artistLocation: artist.location, travelRadiusMiles: artist.travelRadiusMiles, artistSize: artist.artistSize,
+                slotGenres: slot.genres, slotCity: slot.city, slotSizeFit: slot.artistSizeFit, distanceMiles: miles)
     }
 }

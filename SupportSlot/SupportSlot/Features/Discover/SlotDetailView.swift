@@ -72,7 +72,7 @@ struct SlotDetailView: View {
                 facts(slot)
                 moneyCard(slot)
 
-                if store.role == .artist, store.isSignedIn, let artist = store.artist { FitSummaryView(fit: Fit.explain(artist: artist, slot: slot)) }
+                if store.role == .artist, store.isSignedIn, let artist = store.artist { FitSummaryView(fit: Fit.explain(artist: artist, slot: slot, artistCoordinate: store.myCoordinate)) }
 
                 if !slot.description.isEmpty { section("About the show") { Text(slot.description).dimBody(15).lineSpacing(3) } }
                 if !slot.requirements.isEmpty {
@@ -149,21 +149,15 @@ struct SlotDetailView: View {
                     Text(Money.gbp(s.supportFee)).font(Theme.display(34)).foregroundStyle(Theme.acid)
                     Text("support fee").dimBody(14)
                 }
-                if s.travelContribution > 0 || store.role == .artist {
-                    Text(travelLine(s)).dimBody(14)
+                if store.role == .artist, store.isSignedIn, store.userId != s.promoterId {
+                    TermsPreviewView(slotId: s.id, listedTravelPounds: s.travelContribution)
+                } else {
+                    if s.travelContribution > 0 { Text("+ \(Money.gbp(s.travelContribution)) travel contribution").dimBody(14) }
+                    Text(Travel.ruleSummary).font(Theme.body(12)).foregroundStyle(Theme.paperDim)
                 }
                 Text("The promoter pays you directly — Support Slot doesn’t take a cut or handle payment. No application fees.").font(Theme.body(12)).foregroundStyle(Theme.paperDim.opacity(0.9))
             }
         }
-    }
-
-    private func travelLine(_ s: Slot) -> String {
-        if store.role == .artist, let artist = store.artist {
-            let effective = Travel.effectiveContribution(pounds: s.travelContribution, artistCity: artist.location, venueCity: s.city)
-            if effective != s.travelContribution { return "+ \(Money.gbp(effective)) travel for you (topped up to the £10 minimum for journeys over an hour)" }
-            return "+ \(Money.gbp(effective)) travel contribution"
-        }
-        return "+ \(Money.gbp(s.travelContribution)) travel contribution (journeys over an hour are topped up to £10)"
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {

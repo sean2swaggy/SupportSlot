@@ -68,7 +68,7 @@ enum CSV {
     static func field(_ value: String) -> String {
         var s = value
         if let first = s.unicodeScalars.first, "=+-@\t\r".unicodeScalars.contains(first) { s = "'" + s }
-        if s.contains(",") || s.contains("\"") || s.contains("\n") { s = "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
+        if s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r") { s = "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
         return s
     }
 

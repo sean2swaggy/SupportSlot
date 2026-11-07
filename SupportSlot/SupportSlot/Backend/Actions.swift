@@ -59,13 +59,12 @@ extension Database {
         if rows.isEmpty { throw AppError("You can't reopen this listing.") }
     }
 
-    private func listingPayload(_ d: ListingDraft, city: String, headlinerImage: String?, artistPhoto: String?) -> Patch {
+    private func listingPayload(_ d: ListingDraft, headlinerImage: String?, artistPhoto: String?) -> Patch {
         [
             "headliner": .string(d.headliner.trimmingCharacters(in: .whitespacesAndNewlines)),
             "headliner_image_url": .optional(headlinerImage),
             "artist_photo_url": .optional(artistPhoto),
             "venue_id": .string(d.venueId),
-            "city": .string(city),
             "date": .string(d.date),
             "doors_time": .string(d.doorsTime),
             "set_time": .string(d.setTime),
@@ -83,8 +82,8 @@ extension Database {
     }
 
     @discardableResult
-    func createListing(promoterId: ID, _ d: ListingDraft, city: String, headlinerImage: String?, artistPhoto: String?) async throws -> ID {
-        var payload = listingPayload(d, city: city, headlinerImage: headlinerImage, artistPhoto: artistPhoto)
+    func createListing(promoterId: ID, _ d: ListingDraft, headlinerImage: String?, artistPhoto: String?) async throws -> ID {
+        var payload = listingPayload(d, headlinerImage: headlinerImage, artistPhoto: artistPhoto)
         payload["promoter_id"] = .string(promoterId)
         let rows: [IDRow] = try await insert("slots", payload, returning: "id")
         guard let id = rows.first?.id else { throw AppError.generic("Couldn't publish your listing.") }
@@ -93,9 +92,33 @@ extension Database {
 
     /// Edits a listing the signed-in promoter owns. The database refuses a change
     /// to the date, venue, times or fee while an offer or confirmed booking exists.
-    func updateListing(id: ID, _ d: ListingDraft, city: String, headlinerImage: String?, artistPhoto: String?) async throws {
-        let rows = try await update(Query("slots").eq("id", id), listingPayload(d, city: city, headlinerImage: headlinerImage, artistPhoto: artistPhoto))
+    func updateListing(id: ID, _ d: ListingDraft, headlinerImage: String?, artistPhoto: String?) async throws {
+        let rows = try await update(Query("slots").eq("id", id), listingPayload(d, headlinerImage: headlinerImage, artistPhoto: artistPhoto))
         if rows.isEmpty { throw AppError("You can't edit this listing.") }
+    }
+
+    // MARK: Places
+
+    /// Changes the signed-in person's location. The public label/nation/area and
+    /// (for artists) the private, ~1 km-rounded coordinates are written together.
+    func setMyLocation(_ place: Place) async throws {
+        try await rpcVoid("set_my_location", [
+            "p_label": .string(place.label),
+            "p_country": .string(place.country.rawValue),
+            "p_region": .optional(place.region),
+            "p_lat": .optional(place.coordinate?.lat),
+            "p_lon": .optional(place.coordinate?.lon),
+            "p_source": .string(place.source.rawValue),
+        ])
+    }
+
+    /// Adds a venue anywhere in the UK (shown as unverified). Returns its id.
+    func createVenue(name: String, address: String, capacity: Int, place: Place) async throws -> String {
+        try await rpc("create_venue", [
+            "p_name": .string(name), "p_address": .string(address), "p_capacity": .int(capacity),
+            "p_label": .string(place.label), "p_country": .string(place.country.rawValue), "p_region": .optional(place.region),
+            "p_lat": .optional(place.coordinate?.lat), "p_lon": .optional(place.coordinate?.lon), "p_source": .string(place.source.rawValue),
+        ])
     }
 
     // MARK: Messaging
@@ -107,9 +130,16 @@ extension Database {
 
     struct SentMessage: Decodable { let id: ID; let createdAt: Date }
 
-    func sendMessage(threadId: ID, senderId: ID, text: String) async throws -> SentMessage {
-        let rows: [SentMessage] = try await insert("messages", ["thread_id": .string(threadId), "sender_id": .string(senderId), "text": .string(text)] as Patch, returning: "id, created_at")
-        guard let m = rows.first else { throw AppError.generic("Couldn't send that message.") }
+    /// Sends a message. `clientId` is generated once per message and reused when the
+    /// person taps retry, so a send that reached the server but whose answer was lost
+    /// can never produce a second copy: the database ignores the repeat and we read
+    /// back the one that exists.
+    func sendMessage(threadId: ID, senderId: ID, text: String, clientId: String) async throws -> SentMessage {
+        try await insertIgnoringDuplicates("messages", [
+            "thread_id": .string(threadId), "sender_id": .string(senderId), "text": .string(text), "client_id": .string(clientId),
+        ] as Patch, onConflict: "sender_id,client_id")
+        let stored: SentMessage? = try await selectOne(Query("messages", "id, created_at").eq("sender_id", senderId).eq("client_id", clientId))
+        guard let m = stored else { throw AppError.generic("Couldn't send that message.") }
         return m
     }
 

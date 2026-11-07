@@ -72,6 +72,7 @@ struct ChatBubble: Identifiable, Equatable {
 
 struct ChatView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let threadId: ID
 
     @State private var bubbles: [ChatBubble] = []
@@ -106,7 +107,7 @@ struct ChatView: View {
                     .padding(16)
                 }
                 .scrollDismissesKeyboard(.interactively)
-                .onChange(of: bubbles.last?.id) { _, id in if let id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } } }
+                .onChange(of: bubbles.last?.id) { _, id in if let id { if reduceMotion { proxy.scrollTo(id, anchor: .bottom) } else { withAnimation { proxy.scrollTo(id, anchor: .bottom) } } } }
                 .onAppear { if let id = bubbles.last?.id { proxy.scrollTo(id, anchor: .bottom) } }
             }
             if let blockNote { Banner(kind: .info, text: blockNote).padding(.horizontal, 16) }
@@ -218,7 +219,8 @@ struct ChatView: View {
         guard !text.isEmpty, let uid = store.userId else { return }
         draft = ""
         sendError = nil
-        let local = ChatBubble(id: "local-\(UUID().uuidString)", text: text, mine: true, date: Date(), state: .sending)
+        let clientId = UUID().uuidString.lowercased()
+        let local = ChatBubble(id: "local-\(clientId)", text: text, mine: true, date: Date(), state: .sending)
         bubbles.append(local)
         await deliver(local, uid: uid)
     }
@@ -231,7 +233,7 @@ struct ChatView: View {
 
     private func deliver(_ local: ChatBubble, uid: ID) async {
         do {
-            let sent = try await store.db.sendMessage(threadId: threadId, senderId: uid, text: local.text)
+            let sent = try await store.db.sendMessage(threadId: threadId, senderId: uid, text: local.text, clientId: String(local.id.dropFirst("local-".count)))
             bubbles.removeAll { $0.id == local.id }
             if !bubbles.contains(where: { $0.id == sent.id }) { bubbles.append(ChatBubble(id: sent.id, text: local.text, mine: true, date: sent.createdAt)) }
             bubbles.sort { $0.date < $1.date }

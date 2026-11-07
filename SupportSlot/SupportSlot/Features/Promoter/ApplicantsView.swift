@@ -99,6 +99,7 @@ struct ApplicantCard: View {
     let slot: Slot
     let booking: Booking?
     @State private var showFit = false
+    @State private var terms: TermsPreview?
 
     var body: some View {
         let artist = application.artist
@@ -131,7 +132,7 @@ struct ApplicantCard: View {
             }
             if let m = application.message, !m.isEmpty { Text("“\(m)”").font(Theme.body(15)).foregroundStyle(Theme.paper) }
             if let artist {
-                DisclosureGroup(isExpanded: $showFit) { FitSummaryView(fit: Fit.explain(artist: artist, slot: slot)).padding(.top, 8) } label: {
+                DisclosureGroup(isExpanded: $showFit) { FitSummaryView(fit: Fit.explain(artist: artist, slot: slot, approxDistanceMiles: terms?.basis == "straight_line" ? terms?.distanceMiles : nil)).padding(.top, 8) } label: {
                     MonoLabel("How it fits")
                 }
                 .tint(Theme.paperDim)
@@ -139,6 +140,7 @@ struct ApplicantCard: View {
             Divider1()
             PromoterApplicantControls(application: application, booking: booking, slot: slot)
         }
+        .task(id: application.id) { terms = try? await store.db.termsPreview(slotId: slot.id, artistId: application.artistId) }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.inkCard)
@@ -232,10 +234,9 @@ struct OfferSheet: View {
     @State private var message = ""
     @State private var error: String?
 
-    private var travelPounds: Int {
-        guard let artist = application.artist else { return slot.travelContribution }
-        return Travel.effectiveContribution(pounds: slot.travelContribution, artistCity: artist.location, venueCity: slot.city)
-    }
+    @State private var terms: TermsPreview?
+    @State private var termsFailed = false
+    private var travelPence: Int { terms?.travelPence ?? slot.travelContribution * 100 }
 
     var body: some View {
         ScrollView {
@@ -247,10 +248,15 @@ struct OfferSheet: View {
                     VStack(alignment: .leading, spacing: 8) {
                         MonoLabel("Terms")
                         line("Performance fee", Money.gbp(slot.supportFee))
-                        line("Travel contribution", Money.gbp(travelPounds))
-                        if travelPounds != slot.travelContribution { Text("Topped up to the £10 minimum for a journey over an hour.").font(Theme.body(12)).foregroundStyle(Theme.paperDim) }
+                        line("Travel contribution", Money.pence(travelPence))
+                        if let terms {
+                            if terms.minimumApplies { Text("Raised to the \(Money.pence(Travel.minimumLongTravelPence)) minimum because the venue is more than \(Travel.longJourneyMiles) miles away in a straight line, or we can’t tell how far.").font(Theme.body(12)).foregroundStyle(Theme.paperDim) }
+                            if let sentence = terms.distanceSentence { Text(sentence).font(Theme.body(12)).foregroundStyle(Theme.paperDim) }
+                        } else if termsFailed {
+                            Banner(kind: .error, text: "We couldn’t check the travel terms just now. Go back and try again before sending.")
+                        } else { ProgressView().tint(Theme.acid) }
                         Divider1()
-                        line("You pay the artist", Money.gbp(slot.supportFee + travelPounds), bold: true)
+                        line("You pay the artist (directly, outside the app)", Money.pence(slot.supportFee * 100 + travelPence), bold: true)
                         Text("The offer expires after up to 7 days, or sooner if the show is closer.").font(Theme.body(12)).foregroundStyle(Theme.paperDim)
                     }
                 }
@@ -261,7 +267,7 @@ struct OfferSheet: View {
                 if let error { Banner(kind: .error, text: error) }
                 HStack(spacing: 12) {
                     Button("Go back") { dismiss() }.buttonStyle(.appOutline)
-                    AsyncButton { await send() } label: { Text("Send offer") }
+                    AsyncButton { await send() } label: { Text("Send offer") }.disabled(terms == nil)
                 }
             }
             .padding(24)
@@ -269,6 +275,7 @@ struct OfferSheet: View {
         .scrollDismissesKeyboard(.interactively)
         .screenBackground()
         .navigationBarTitleDisplayMode(.inline)
+        .task { do { terms = try await store.db.termsPreview(slotId: slot.id, artistId: application.artistId) } catch { termsFailed = true } }
     }
 
     private func line(_ label: String, _ value: String, bold: Bool = false) -> some View {

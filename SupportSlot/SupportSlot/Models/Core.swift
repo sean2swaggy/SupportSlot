@@ -28,6 +28,15 @@ struct Profile: Decodable, Equatable {
     var isAdmin: Bool { adminRole == "admin" }
 }
 
+/// `my_account_status()`: the first thing asked once the session is aal2. Works for a suspended account.
+struct AccountStatus: Decodable, Equatable {
+    let role: String
+    let hasOnboarded: Bool
+    let suspended: Bool
+    let suspensionReason: String?
+    let adminRole: String?
+}
+
 // table: artist_tracks
 struct Track: Decodable, Identifiable, Equatable, Hashable {
     let id: ID
@@ -60,6 +69,8 @@ struct Artist: Decodable, Identifiable, Equatable, Hashable {
     let imageUrl: String?
     let bannerImageUrl: String?
     let location: String
+    let locationCountry: String
+    let locationRegion: String?
     let genres: [String]
     let spotifyUrl: String
     let instagramUrl: String
@@ -82,9 +93,9 @@ struct Artist: Decodable, Identifiable, Equatable, Hashable {
     let artistTracks: [Track]?
     let artistShows: [PastShow]?
 
-    static let baseColumns = "id, handle, name, image_url, banner_image_url, location, genres, spotify_url, instagram_url, tiktok_url, soundcloud_url, bandcamp_url, youtube_url, website_url, monthly_listeners, bio, live_video_thumbnail_url, live_video_url, availability, travel_radius_miles, verification, artist_size, last_minute_alerts, member_since"
+    static let baseColumns = "id, handle, name, image_url, banner_image_url, location, location_country, location_region, genres, spotify_url, instagram_url, tiktok_url, soundcloud_url, bandcamp_url, youtube_url, website_url, monthly_listeners, bio, live_video_thumbnail_url, live_video_url, availability, travel_radius_miles, verification, artist_size, last_minute_alerts, member_since"
     /// For lists and cards: no banner or video thumbnail (they can be large data URLs) and no children.
-    static let listColumns = "id, handle, name, image_url, location, genres, spotify_url, instagram_url, tiktok_url, soundcloud_url, bandcamp_url, youtube_url, website_url, monthly_listeners, bio, live_video_url, availability, travel_radius_miles, verification, artist_size, last_minute_alerts, member_since"
+    static let listColumns = "id, handle, name, image_url, location, location_country, location_region, genres, spotify_url, instagram_url, tiktok_url, soundcloud_url, bandcamp_url, youtube_url, website_url, monthly_listeners, bio, live_video_url, availability, travel_radius_miles, verification, artist_size, last_minute_alerts, member_since"
     /// A list row that also carries the artist's tracks (for "featured track" lookups).
     static let listWithTracksColumns = "\(listColumns), artist_tracks(\(Track.columns))"
     /// Artist plus tracks and past shows in a single request.
@@ -103,10 +114,12 @@ struct Promoter: Decodable, Identifiable, Equatable, Hashable {
     let company: String
     let avatarUrl: String?
     let location: String?
+    let locationCountry: String?
+    let locationRegion: String?
     let verification: String
     let showsPosted: Int
 
-    static let columns = "id, name, company, avatar_url, location, verification, shows_posted"
+    static let columns = "id, name, company, avatar_url, location, location_country, location_region, verification, shows_posted"
     var isVerified: Bool { verification == "verified" }
 }
 
@@ -119,8 +132,13 @@ struct Venue: Decodable, Identifiable, Equatable, Hashable {
     let address: String
     let imageUrl: String?
     let verification: String
+    let country: String
+    let region: String?
+    let lat: Double?
+    let lon: Double?
 
-    static let columns = "id, name, city, capacity, address, image_url, verification"
+    static let columns = "id, name, city, capacity, address, image_url, verification, country, region, lat, lon"
+    var isVerified: Bool { verification == "verified" }
 }
 
 // MARK: - Listings
@@ -134,6 +152,10 @@ struct Slot: Decodable, Identifiable, Equatable, Hashable {
     let headlinerImageUrl: String?
     let artistPhotoUrl: String?
     let city: String
+    let country: String
+    let region: String?
+    let lat: Double?
+    let lon: Double?
     let date: String
     let doorsTime: String
     let setTime: String
@@ -153,7 +175,7 @@ struct Slot: Decodable, Identifiable, Equatable, Hashable {
     let postedAt: Date
     let venues: Venue?
 
-    static let baseColumns = "id, promoter_id, venue_id, headliner, headliner_image_url, artist_photo_url, city, date, doors_time, set_time, performance_length_mins, genres, expected_attendance, support_fee, travel_contribution, requirements, application_deadline, applicant_count, is_urgent, status, artist_size_fit, description, rescheduled_at, posted_at"
+    static let baseColumns = "id, promoter_id, venue_id, headliner, headliner_image_url, artist_photo_url, city, country, region, lat, lon, date, doors_time, set_time, performance_length_mins, genres, expected_attendance, support_fee, travel_contribution, requirements, application_deadline, applicant_count, is_urgent, status, artist_size_fit, description, rescheduled_at, posted_at"
     /// Includes the venue so a list of cards doesn't need a request per card.
     static let columns = "\(baseColumns), venues(\(Venue.columns))"
 
@@ -250,27 +272,39 @@ struct SavedSlot: Decodable, Equatable {
 
 struct SlotSearch: Equatable {
     var q = ""
-    var city: String?
+    var country: String?
     var genre: String?
     var from: String?
     var to: String?
     var minFee: Int?
     var venueSize: String?   // intimate | mid | large
     var artistSize: String?
-    var fromCity: String?
-    var maxMiles: Int?
+    var near: Coordinate?    // radius search: the centre…
+    var maxMiles: Int?       // …and how far (straight-line miles)
     var urgentOnly = false
-    var sort = "date"        // date | fee | newest
+    var sort = "date"        // date | fee | newest | distance
     var page = 1
     var pageSize = 12
 }
 
 struct SlotSearchResult: Equatable {
     let slots: [Slot]
+    /// Straight-line miles from the search centre, by listing id (only when a centre was given and the listing has coordinates).
+    var distances: [ID: Double] = [:]
     let total: Int
     let page: Int
     let pageSize: Int
     var hasMore: Bool { page * pageSize < total }
 }
 
-struct SearchHit: Decodable { let id: ID; let totalCount: Int }
+struct SearchHit: Decodable { let id: ID; let totalCount: Int; let distanceMiles: Double? }
+struct ArtistSearchHit: Decodable { let id: ID; let totalCount: Int; let distanceMiles: Int? }
+
+// table: artist_locations
+/// The signed-in artist's own private, ~1 km-rounded coordinates. Nobody else can read this row.
+struct ArtistLocationRow: Decodable, Equatable {
+    let lat: Double
+    let lon: Double
+    static let columns = "lat, lon"
+    var coordinate: Coordinate { Coordinate(lat: lat, lon: lon) }
+}

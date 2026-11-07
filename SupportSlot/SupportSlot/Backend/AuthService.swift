@@ -9,6 +9,7 @@ final class AuthService: @unchecked Sendable {
     private var _session: AuthSession?
     private var refreshTask: Task<AuthSession, Error>?
     private let storageKey: String
+    private var flowKey: String { storageKey + ".pkce" }
 
     /// Called on any change of the signed-in session (including sign-out).
     var onChange: (@Sendable (AuthSession?) -> Void)?
@@ -49,11 +50,16 @@ final class AuthService: @unchecked Sendable {
     // MARK: - Public API
 
     func signUp(email: String, password: String, role: String) async throws -> SignUpOutcome {
-        struct Body: Encodable { let email: String; let password: String; let data: [String: String] }
-        let body = try JSONEncoder().encode(Body(email: email, password: password, data: ["role": role]))
+        struct Body: Encodable {
+            let email: String; let password: String; let data: [String: String]
+            let codeChallenge: String; let codeChallengeMethod = "s256"
+        }
+        let pkce = PKCEPair.generate()
+        let body = try JSONCoding.encoder.encode(Body(email: email, password: password, data: ["role": role], codeChallenge: pkce.challenge))
         let req = transport.request("POST", "/auth/v1/signup", query: QueryEncoding.queryString([("redirect_to", AppConfig.authCallbackURL)]), bearer: nil, body: body)
         let (data, http) = try await transport.send(req)
         guard (200..<300).contains(http.statusCode) else { throw Self.authError(data, status: http.statusCode) }
+        PendingAuthFlowStore.save(PendingAuthFlow(kind: .signup, verifier: pkce.verifier, createdAt: Date()), key: flowKey)
 
         if let token = try? JSONCoding.decoder.decode(TokenResponse.self, from: data) {
             let s = token.session
@@ -84,6 +90,7 @@ final class AuthService: @unchecked Sendable {
     func signOut() async {
         let token = session?.accessToken
         store(nil)
+        clearPendingFlow()
         if let token {
             let req = transport.request("POST", "/auth/v1/logout", query: "scope=local", bearer: token)
             _ = try? await transport.send(req)
@@ -150,19 +157,23 @@ final class AuthService: @unchecked Sendable {
     }
 
     func sendPasswordReset(email: String) async throws {
-        struct Body: Encodable { let email: String }
-        let body = try JSONEncoder().encode(Body(email: email))
+        struct Body: Encodable { let email: String; let codeChallenge: String; let codeChallengeMethod = "s256" }
+        let pkce = PKCEPair.generate()
+        let body = try JSONCoding.encoder.encode(Body(email: email, codeChallenge: pkce.challenge))
         let req = transport.request("POST", "/auth/v1/recover", query: QueryEncoding.queryString([("redirect_to", AppConfig.authCallbackURL)]), bearer: nil, body: body)
         let (data, http) = try await transport.send(req)
         guard (200..<300).contains(http.statusCode) else { throw Self.authError(data, status: http.statusCode) }
+        PendingAuthFlowStore.save(PendingAuthFlow(kind: .recovery, verifier: pkce.verifier, createdAt: Date()), key: flowKey)
     }
 
     func resendConfirmation(email: String) async throws {
-        struct Body: Encodable { let type: String; let email: String }
-        let body = try JSONEncoder().encode(Body(type: "signup", email: email))
+        struct Body: Encodable { let type: String; let email: String; let codeChallenge: String; let codeChallengeMethod = "s256" }
+        let pkce = PKCEPair.generate()
+        let body = try JSONCoding.encoder.encode(Body(type: "signup", email: email, codeChallenge: pkce.challenge))
         let req = transport.request("POST", "/auth/v1/resend", query: QueryEncoding.queryString([("redirect_to", AppConfig.authCallbackURL)]), bearer: nil, body: body)
         let (data, http) = try await transport.send(req)
         guard (200..<300).contains(http.statusCode) else { throw Self.authError(data, status: http.statusCode) }
+        PendingAuthFlowStore.save(PendingAuthFlow(kind: .signup, verifier: pkce.verifier, createdAt: Date()), key: flowKey)
     }
 
     func updatePassword(_ newPassword: String) async throws {
@@ -173,37 +184,57 @@ final class AuthService: @unchecked Sendable {
         guard (200..<300).contains(http.statusCode) else { throw Self.authError(data, status: http.statusCode) }
     }
 
-    // MARK: - Email links (confirmation, password reset)
+    // MARK: - Email links (confirmation, password reset) — PKCE only
 
-    /// Handles `supportslot://auth-callback#access_token=…&type=recovery`.
-    /// Supabase sends the tokens in the URL fragment (or the query on errors).
-    func handleCallback(_ url: URL) async -> AuthCallbackKind {
+    /// Handles `supportslot://auth-callback?code=…`.
+    ///
+    /// Only the PKCE code flow is accepted. A link that carries ready-made
+    /// tokens (the old implicit flow, `#access_token=…`) is refused without
+    /// signing anyone in, because anything on the phone can open this URL
+    /// scheme and could use such a link to sign the person in as someone else.
+    /// A code is only exchanged if THIS device started the flow, it is under an
+    /// hour old, and it hasn't been used: the stored verifier is single-use.
+    func handleCallback(_ url: URL, now: Date = Date()) async -> AuthCallbackKind {
         guard url.scheme == AppConfig.urlScheme, url.host == "auth-callback" else { return .notAuthLink }
         var params: [String: String] = [:]
-        for part in [url.fragment, url.query].compactMap({ $0 }) {
+        for part in [url.query, url.fragment].compactMap({ $0 }) {
             for pair in part.split(separator: "&") {
                 let kv = pair.split(separator: "=", maxSplits: 1).map(String.init)
-                if kv.count == 2 { params[kv[0]] = kv[1].removingPercentEncoding?.replacingOccurrences(of: "+", with: " ") ?? kv[1] }
+                if kv.count == 2 { params[kv[0]] = kv[1].replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? kv[1] }
             }
         }
+        let expiredText = "That link has expired or was already used. Request a new one."
         if let desc = params["error_description"] ?? params["error"] {
-            return .failed(desc.range(of: "expired|invalid", options: [.caseInsensitive, .regularExpression]) != nil
-                ? "That link has expired or was already used. Request a new one."
-                : "That link didn't work. Request a new one.")
+            PendingAuthFlowStore.clear(key: flowKey)
+            return .failed(desc.range(of: "expired|invalid|used", options: [.caseInsensitive, .regularExpression]) != nil ? expiredText : "That link didn’t work. Request a new one.")
         }
-        guard let access = params["access_token"], let refresh = params["refresh_token"] else { return .notAuthLink }
+        if params["access_token"] != nil || params["refresh_token"] != nil {
+            // Old-style link carrying tokens. Not accepted. By the time it reaches us the email is already confirmed.
+            return .failed("That link is in an older format that we no longer accept for your safety. If you were confirming your email, it’s done — just log in. If you were resetting your password, request a new reset link.")
+        }
+        guard let code = params["code"], !code.isEmpty else { return .notAuthLink }
+        guard let flow = PendingAuthFlowStore.load(key: flowKey) else {
+            return .failed("We can’t use that link here — it wasn’t requested from this device, or it was already used. If you just confirmed your email, log in. Otherwise request a new link.")
+        }
+        // Single use: whatever happens next, this verifier is spent.
+        PendingAuthFlowStore.clear(key: flowKey)
+        if flow.isExpired(now: now) { return .failed(expiredText) }
+
         do {
-            let (data, http) = try await transport.send(transport.request("GET", "/auth/v1/user", bearer: access))
-            guard (200..<300).contains(http.statusCode) else { return .failed("That link has expired or was already used. Request a new one.") }
-            let user = try JSONCoding.decoder.decode(AuthUser.self, from: data)
-            let expires = Int(params["expires_in"] ?? "") ?? 3600
-            let expiresAt = Int(params["expires_at"] ?? "").map { Date(timeIntervalSince1970: TimeInterval($0)) } ?? Date().addingTimeInterval(TimeInterval(expires))
-            store(AuthSession(accessToken: access, refreshToken: refresh, expiresAt: expiresAt, user: user))
-            return params["type"] == "recovery" ? .recovery : .signedIn
+            struct Body: Encodable { let authCode: String; let codeVerifier: String }
+            let body = try JSONCoding.encoder.encode(Body(authCode: code, codeVerifier: flow.verifier))
+            let (data, http) = try await transport.send(transport.request("POST", "/auth/v1/token", query: "grant_type=pkce", bearer: nil, body: body))
+            guard (200..<300).contains(http.statusCode) else { return .failed(expiredText) }
+            let s = try JSONCoding.decoder.decode(TokenResponse.self, from: data).session
+            store(s)
+            return flow.kind == .recovery ? .recovery : .signedIn
         } catch {
-            return .failed((error as? AppError)?.message ?? "That link didn't work. Request a new one.")
+            return .failed((error as? AppError)?.message ?? "That link didn’t work. Request a new one.")
         }
     }
+
+    /// Forgets any half-finished email-link flow (on sign-out).
+    func clearPendingFlow() { PendingAuthFlowStore.clear(key: flowKey) }
 
     // MARK: - Two-factor (TOTP)
 
@@ -231,7 +262,11 @@ final class AuthService: @unchecked Sendable {
         let body = try JSONCoding.encoder.encode(Body(challengeId: challenge.id, code: code))
         let (vdata, vhttp) = try await transport.send(transport.request("POST", "/auth/v1/factors/\(factorID)/verify", bearer: token, body: body))
         guard (200..<300).contains(vhttp.statusCode) else { throw Self.authError(vdata, status: vhttp.statusCode, mfa: true) }
-        store(try JSONCoding.decoder.decode(TokenResponse.self, from: vdata).session)
+        let upgraded = try JSONCoding.decoder.decode(TokenResponse.self, from: vdata).session
+        // The server said yes; make sure the token we're about to rely on really says aal2.
+        // (If it doesn't, don't treat the person as verified: the database wouldn't either.)
+        guard upgraded.isAAL2 else { throw AppError("We couldn’t confirm that code on the server. Please try again.") }
+        store(upgraded)
     }
 
     /// Removes a factor that was started but never verified (so setup can restart cleanly).

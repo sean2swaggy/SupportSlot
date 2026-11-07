@@ -17,7 +17,8 @@ struct DiscoverView: View {
         _filters = State(initialValue: f)
     }
 
-    private var artistCity: String? { store.role == .artist ? store.artist?.location : nil }
+    /// The artist's own private position, used only when they ask for "near my base".
+    private var base: Coordinate? { store.role == .artist ? store.myCoordinate : nil }
     private var title: String { filters.urgentOnly ? "Needed tonight" : "Support opportunities" }
     private var key: SlotFilters { filters }
 
@@ -29,7 +30,7 @@ struct DiscoverView: View {
                     DisplayTitle(title, size: 32)
                     Text(filters.urgentOnly
                          ? "Promoters who need a support act at short notice. Turn on last-minute alerts in your profile to hear about these first."
-                         : "Browse slots by city, genre, date and fee. Applying is always free.").dimBody(14)
+                         : "Browse slots anywhere in the UK by place, genre, date and fee. Applying is always free.").dimBody(14)
                 }
 
                 filterBar
@@ -48,15 +49,15 @@ struct DiscoverView: View {
                     } else {
                         Text("\(model.total) listing\(model.total == 1 ? "" : "s")").font(Theme.mono(11)).foregroundStyle(Theme.paperDim).textCase(.uppercase)
                         ForEach(model.slots) { slot in
-                            NavigationLink(value: slot) { SlotCard(slot: slot) }
+                            NavigationLink(value: slot) { SlotCard(slot: slot, distanceMiles: model.distances[slot.id]) }
                                 .buttonStyle(.plain)
                                 .onAppear {
-                                    if slot.id == model.slots.last?.id { Task { await model.loadMore(db: store.db, filters: filters, artistCity: artistCity) } }
+                                    if slot.id == model.slots.last?.id { Task { await model.loadMore(db: store.db, filters: filters, base: base) } }
                                 }
                         }
                         if model.loadingMore { LoadingView(label: "Loading more…") }
                         if let e = model.loadMoreError {
-                            ErrorState(error: e) { Task { await model.loadMore(db: store.db, filters: filters, artistCity: artistCity) } }
+                            ErrorState(error: e) { Task { await model.loadMore(db: store.db, filters: filters, base: base) } }
                         }
                     }
                 }
@@ -69,7 +70,7 @@ struct DiscoverView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: Slot.self) { SlotDetailView(slotId: $0.id, preloaded: $0) }
         .sheet(isPresented: $showFilters) {
-            NavigationStack { FilterSheet(filters: $filters, canFilterByDistance: artistCity != nil) }
+            NavigationStack { FilterSheet(filters: $filters, baseLabel: store.role == .artist && base != nil ? store.artist?.location : nil) }
                 .presentationDetents([.large]).presentationBackground(Theme.ink)
         }
         .task(id: key) { await reload() }
@@ -80,7 +81,7 @@ struct DiscoverView: View {
         HStack(spacing: 10) {
             HStack {
                 Image(systemName: "magnifyingglass").foregroundStyle(Theme.paperDim)
-                TextField("Search headliner, venue, city…", text: $searchText)
+                TextField("Search headliner, venue, town…", text: $searchText)
                     .submitLabel(.search)
                     .onSubmit { filters.query = searchText }
                     .autocorrectionDisabled()
@@ -105,20 +106,22 @@ struct DiscoverView: View {
     }
 
     private func reload() async {
-        await model.reload(db: store.db, filters: filters, artistCity: artistCity)
+        await model.reload(db: store.db, filters: filters, base: base)
     }
 }
 
 struct FilterSheet: View {
     @Binding var filters: SlotFilters
-    var canFilterByDistance: Bool
+    /// The artist's base place name, when they have a private map position to measure from.
+    var baseLabel: String?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                menu("Where", selection: Binding(get: { filters.city ?? "" }, set: { filters.city = $0.isEmpty ? nil : $0 }),
-                     options: [("", "Any location")] + Catalog.cities.map { ($0, $0) })
+                menu("Nation", selection: Binding(get: { filters.country?.rawValue ?? "" }, set: { filters.country = UKNation(rawValue: $0) }),
+                     options: [("", "Anywhere in the UK")] + UKNation.allCases.map { ($0.rawValue, $0.rawValue) })
+                nearSection
                 menu("Genre", selection: Binding(get: { filters.genre ?? "" }, set: { filters.genre = $0.isEmpty ? nil : $0 }),
                      options: [("", "Any genre")] + Catalog.genres.map { ($0, $0) })
                 menu("When", selection: Binding(get: { filters.when.rawValue }, set: { filters.when = SlotFilters.When(rawValue: $0) ?? .any }),
@@ -129,10 +132,6 @@ struct FilterSheet: View {
                      options: SlotFilters.VenueSize.allCases.map { ($0.rawValue, $0.label) })
                 menu("Artist size", selection: Binding(get: { filters.artistSize ?? "" }, set: { filters.artistSize = $0.isEmpty ? nil : $0 }),
                      options: [("", "Any artist size")] + Catalog.artistSizes.map { ($0, Catalog.artistSizeLabel($0)) })
-                if canFilterByDistance {
-                    menu("Distance from you", selection: Binding(get: { filters.distance.map(String.init) ?? "" }, set: { filters.distance = Int($0) }),
-                         options: [("", "Any distance")] + SlotFilters.distanceOptions.map { (String($0), "Within \($0) miles") })
-                }
                 menu("Sort", selection: Binding(get: { filters.sort.rawValue }, set: { filters.sort = SlotFilters.Sort(rawValue: $0) ?? .date }),
                      options: SlotFilters.Sort.allCases.map { ($0.rawValue, $0.label) })
                 HStack(spacing: 12) {
@@ -146,6 +145,26 @@ struct FilterSheet: View {
         .navigationTitle("Filters")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+    }
+
+    @ViewBuilder private var nearSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            PlaceField(label: "Near (optional)", place: Binding(get: { filters.near }, set: { filters.near = $0; if $0 != nil { filters.nearMyBase = false; if filters.distance == nil { filters.distance = 25 } } }),
+                       hint: "Pick a town or city to search around. Distances are straight-line miles, not journey times.")
+            if let baseLabel {
+                Toggle(isOn: Binding(get: { filters.nearMyBase }, set: { filters.nearMyBase = $0; if $0 { filters.near = nil; if filters.distance == nil { filters.distance = 25 } } })) {
+                    Text("Near my base (\(baseLabel))").font(Theme.body(15)).foregroundStyle(Theme.paper)
+                }.tint(Theme.acid)
+            }
+            if filters.near != nil || filters.nearMyBase {
+                menu("Within", selection: Binding(get: { filters.distance.map(String.init) ?? "" }, set: { filters.distance = Int($0) }),
+                     options: [("", "Any distance")] + SlotFilters.distanceOptions.map { (String($0), "\($0) miles") })
+                if let near = filters.near, !near.hasCoordinates {
+                    Banner(kind: .info, text: "“\(near.label)” was typed in, so it has no map position and can’t be used for distance. Choose it from the search instead.")
+                }
+                Button("Clear location") { filters.near = nil; filters.nearMyBase = false; filters.distance = nil }.buttonStyle(.app(.outline, compact: true))
+            }
+        }
     }
 
     private func menu(_ label: String, selection: Binding<String>, options: [(String, String)]) -> some View {

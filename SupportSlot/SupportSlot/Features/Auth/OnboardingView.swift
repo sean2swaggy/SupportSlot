@@ -12,7 +12,7 @@ struct OnboardingView: View {
     @State private var dob = ""
     @State private var image: String?
     @State private var name = ""        // artist/band name or company
-    @State private var city = Catalog.cities[0]
+    @State private var place: Place?
     @State private var genres: [String] = []
     @State private var spotify = ""
     @State private var instagram = ""
@@ -23,6 +23,7 @@ struct OnboardingView: View {
 
     enum UsernameStatus: Equatable { case idle, checking, available, taken, invalid(String) }
 
+    private static let placeMissing = "Choose where you’re based."
     private var role: UserRole { store.role }
     private var totalSteps: Int { role == .artist ? 4 : 3 }
 
@@ -51,6 +52,24 @@ struct OnboardingView: View {
         .scrollDismissesKeyboard(.interactively)
         .screenBackground()
         .task(id: username) { await checkUsername() }
+        .onAppear { restoreDraft() }
+        .onChange(of: draft) { _, new in if restored, let uid = store.userId { OnboardingDraftStore.save(new, userId: uid) } }
+    }
+
+    // MARK: Draft (resume after the app is closed)
+
+    @State private var restored = false
+    private var draft: OnboardingDraft {
+        OnboardingDraft(step: step, username: username, name: name, place: place, genres: genres, spotify: spotify, instagram: instagram, bio: bio)
+    }
+
+    private func restoreDraft() {
+        guard !restored, let uid = store.userId else { return }
+        if let d = OnboardingDraftStore.load(userId: uid) {
+            step = min(max(d.step, 1), totalSteps); username = d.username; name = d.name; place = d.place
+            genres = d.genres; spotify = d.spotify; instagram = d.instagram; bio = d.bio
+        }
+        restored = true
     }
 
     // MARK: Steps
@@ -104,7 +123,7 @@ struct OnboardingView: View {
             heading("Tell us about your project", "Solo artist or full band — either works.")
             PhotoField(label: "Profile photo", imageUrl: $image, maxDimension: 640)
             LabeledField(label: "Artist / band name") { TextField("Your name", text: $name).fieldStyle() }
-            LabeledField(label: "Based in") { cityPicker }
+            PlaceField(label: "Based in", place: $place, error: stepError == Self.placeMissing ? Self.placeMissing : nil, hint: "Search for your actual town, city or village. You can type it in if search isn’t available.")
             LabeledField(label: "Genres (up to 5)") { ChoiceChips(options: Catalog.genres, selection: $genres, limit: 5) }
         }
     }
@@ -136,7 +155,7 @@ struct OnboardingView: View {
             heading("Your promoter details", "This appears on every slot you post.")
             PhotoField(label: "Profile photo", imageUrl: $image, maxDimension: 640)
             LabeledField(label: "Company / collective name") { TextField("Your company or collective", text: $name).fieldStyle() }
-            LabeledField(label: "Based in") { cityPicker }
+            PlaceField(label: "Based in", place: $place, error: stepError == Self.placeMissing ? Self.placeMissing : nil, hint: "Search for your actual town, city or village. You can type it in if search isn’t available.")
         }
     }
 
@@ -145,16 +164,6 @@ struct OnboardingView: View {
             heading("You’re almost done", "Verification badges are added once we confirm your venue or promotion history.")
             Card { Text("Next you’ll set up two-factor authentication to keep your account safe.").dimBody(14) }
         }
-    }
-
-    private var cityPicker: some View {
-        Menu {
-            Picker("City", selection: $city) { ForEach(Catalog.cities, id: \.self) { Text($0).tag($0) } }
-        } label: {
-            HStack { Text(city).foregroundStyle(Theme.paper); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(Theme.paperDim) }
-                .fieldStyle()
-        }
-        .accessibilityLabel("Based in, \(city)")
     }
 
     // MARK: Navigation
@@ -181,11 +190,13 @@ struct OnboardingView: View {
         case (2, .artist):
             if name.trimmingCharacters(in: .whitespaces).isEmpty { stepError = "Enter your artist or band name."; return }
             if genres.isEmpty { stepError = "Choose at least one genre."; return }
+            if place == nil { stepError = Self.placeMissing; return }
         case (3, .artist):
             if !spotify.isEmpty, !SafeLink.isSafe(spotify) { stepError = "Fix your Spotify link first."; return }
             if !instagram.isEmpty, !SafeLink.isSafe(instagram) { stepError = "Fix your Instagram link first."; return }
         case (2, .promoter):
             if name.trimmingCharacters(in: .whitespaces).isEmpty { stepError = "Enter your company or collective name."; return }
+            if place == nil { stepError = Self.placeMissing; return }
         default: break
         }
         step += 1
@@ -194,13 +205,15 @@ struct OnboardingView: View {
     private func finish() async {
         submitError = nil
         guard let uid = store.userId else { return }
+        guard let place else { submitError = Self.placeMissing; return }
         do {
             if role == .artist {
                 try await store.db.completeOnboarding(userId: uid, artist: ArtistOnboarding(
-                    username: username, name: name, city: city, genres: genres, spotifyUrl: spotify, instagramUrl: instagram, bio: bio, imageUrl: image))
+                    username: username, name: name, place: place, genres: genres, spotifyUrl: spotify, instagramUrl: instagram, bio: bio, imageUrl: image))
             } else {
-                try await store.db.completeOnboarding(userId: uid, promoter: PromoterOnboarding(username: username, company: name, city: city, avatarUrl: image))
+                try await store.db.completeOnboarding(userId: uid, promoter: PromoterOnboarding(username: username, company: name, place: place, avatarUrl: image))
             }
+            if let uid = store.userId { OnboardingDraftStore.clear(userId: uid) }
             finished = true
         } catch {
             submitError = (error as? AppError)?.message ?? "Something went wrong — try again."

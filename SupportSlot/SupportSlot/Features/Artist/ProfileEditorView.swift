@@ -18,7 +18,7 @@ struct ProfileEditorView: View {
                     }
                     checklist(items, c)
                     PhotosEditor(artist: artist)
-                    BasicsEditor(artist: artist).id(artist.name + artist.bio + artist.location + artist.genres.joined() + artist.availability + String(artist.travelRadiusMiles) + (artist.liveVideoUrl ?? "") + artist.artistSize)
+                    BasicsEditor(artist: artist).id(artist.name + artist.bio + artist.location + artist.locationCountry + artist.genres.joined() + artist.availability + String(artist.travelRadiusMiles) + (artist.liveVideoUrl ?? "") + artist.artistSize)
                     TracksEditor(artist: artist)
                     LinksEditor(artist: artist)
                     ListenersEditor(artist: artist)
@@ -122,7 +122,7 @@ private struct BasicsEditor: View {
     @Environment(AppStore.self) private var store
     let artist: Artist
     @State private var name: String
-    @State private var location: String
+    @State private var place: Place?
     @State private var genres: [String]
     @State private var bio: String
     @State private var availability: String
@@ -134,7 +134,7 @@ private struct BasicsEditor: View {
 
     init(artist: Artist) {
         self.artist = artist
-        _name = State(initialValue: artist.name); _location = State(initialValue: artist.location)
+        _name = State(initialValue: artist.name); _place = State(initialValue: artist.place)
         _genres = State(initialValue: artist.genres); _bio = State(initialValue: artist.bio)
         _availability = State(initialValue: artist.availability); _artistSize = State(initialValue: artist.artistSize)
         _radius = State(initialValue: artist.travelRadiusMiles); _video = State(initialValue: artist.liveVideoUrl ?? "")
@@ -143,7 +143,7 @@ private struct BasicsEditor: View {
     var body: some View {
         EditorSection(title: "About you") {
             LabeledField(label: "Artist name") { TextField("Your name", text: $name).fieldStyle() }
-            LabeledField(label: "Based in") { picker($location, Catalog.cities.map { ($0, $0) }) }
+            PlaceField(label: "Based in", place: $place, hint: "Promoters see this place, not your exact position. Choose it from the search to appear in distance searches.")
             LabeledField(label: "Availability") { picker($availability, Catalog.availabilities.map { ($0, Catalog.availabilityLabel($0)) }) }
             LabeledField(label: "Artist size", hint: "Used to show how well a listing fits you.") { picker($artistSize, Catalog.artistSizes.map { ($0, Catalog.artistSizeLabel($0)) }) }
             LabeledField(label: "Travel radius (miles)") { IntField(value: $radius, placeholder: "50") }
@@ -173,12 +173,14 @@ private struct BasicsEditor: View {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedName.isEmpty { error = "Enter your artist name."; return }
         if genres.isEmpty { error = "Choose at least one genre."; return }
+        guard let place, place.validationError == nil else { error = place?.validationError ?? "Choose where you’re based."; return }
         guard let miles = radius, (0...500).contains(miles) else { error = "Travel radius must be a whole number of miles between 0 and 500."; return }
         let link = video.trimmingCharacters(in: .whitespaces)
         if !link.isEmpty, !SafeLink.isSafe(link) { error = "The live video link must start with https://"; return }
         do {
             try await store.perform {
-                try await store.db.updateArtistBasics(id: artist.id, name: trimmedName, location: location, genres: genres, bio: bio.trimmingCharacters(in: .whitespacesAndNewlines),
+                if place != artist.place { try await store.db.setMyLocation(place) }
+                try await store.db.updateArtistBasics(id: artist.id, name: trimmedName, genres: genres, bio: bio.trimmingCharacters(in: .whitespacesAndNewlines),
                                                       availability: availability, travelRadiusMiles: miles, artistSize: artistSize, liveVideoUrl: link.isEmpty ? nil : link)
             }
             saved = true
