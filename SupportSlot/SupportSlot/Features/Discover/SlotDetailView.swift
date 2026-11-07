@@ -114,6 +114,7 @@ struct SlotDetailView: View {
     }
 
     private func promoterRow(_ p: Promoter) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
         HStack(spacing: 10) {
             Avatar(imageUrl: p.avatarUrl, name: p.company, size: 34)
             VStack(alignment: .leading, spacing: 2) {
@@ -122,6 +123,9 @@ struct SlotDetailView: View {
             }
         }
         .accessibilityElement(children: .combine)
+        if p.isVerified { VerifiedExplainer() }
+        ReviewsSummary(profileId: p.id)
+        }
     }
 
     private func facts(_ s: Slot) -> some View {

@@ -10,6 +10,9 @@ struct DiscoverView: View {
     @State private var filters: SlotFilters
     @State private var searchText = ""
     @State private var showFilters = false
+    @State private var savingSearch = false
+    @State private var searchName = ""
+    @State private var saveNote: String?
 
     init(urgentOnly: Bool = false) {
         var f = SlotFilters()
@@ -34,6 +37,7 @@ struct DiscoverView: View {
                 }
 
                 filterBar
+                if canSaveSearch { saveSearchBar }
 
                 switch model.status {
                 case .idle where model.slots.isEmpty, .loading where model.slots.isEmpty:
@@ -103,6 +107,35 @@ struct DiscoverView: View {
             }
             .accessibilityLabel(filters.activeCount > 0 ? "Filters, \(filters.activeCount) active" : "Filters")
         }
+    }
+
+    /// A search can be saved when an artist has chosen a genre, or a distance from their own base.
+    private var canSaveSearch: Bool { store.role == .artist && (filters.genre != nil || (filters.distance != nil && filters.nearMyBase && base != nil)) }
+
+    private var saveSearchBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { searchName = suggestedName; savingSearch = true } label: { Label("Save this search", systemImage: "bell.badge") }
+                .buttonStyle(.app(.outline, compact: true))
+            if let saveNote { Text(saveNote).font(Theme.body(12)).foregroundStyle(Theme.paperDim) }
+        }
+        .alert("Save this search", isPresented: $savingSearch) {
+            TextField("Name", text: $searchName)
+            Button("Save") { Task { await saveSearch() } }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("We’ll tell you in the app when a new slot matches.") }
+    }
+
+    private var suggestedName: String {
+        [filters.genre, filters.distance.map { "within \($0) mi" }].compactMap { $0 }.joined(separator: ", ")
+    }
+
+    private func saveSearch() async {
+        let name = searchName.trimmingCharacters(in: .whitespaces)
+        do {
+            try await store.db.saveSearch(label: name.isEmpty ? suggestedName : name, genres: filters.genre.map { [$0] } ?? [],
+                                          maxMiles: (filters.nearMyBase && base != nil) ? filters.distance : nil)
+            saveNote = "Saved. Manage your searches in Me → Saved searches."
+        } catch { saveNote = (error as? AppError)?.message ?? "Couldn’t save that search." }
     }
 
     private func reload() async {

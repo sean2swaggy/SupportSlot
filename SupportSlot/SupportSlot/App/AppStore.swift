@@ -297,6 +297,7 @@ final class AppStore {
         guard let href, !href.isEmpty else { return }
         let path = href.split(separator: "?").first.map(String.init) ?? href
         if path.hasPrefix("/slot/") { presentedSlotID = String(path.dropFirst("/slot/".count)); return }
+        if path.hasPrefix("/booking/") { selectedTab = role == .artist ? .applications : .myGigs; return }
         switch path {
         case "/applications": selectedTab = role == .artist ? .applications : .myGigs
         case "/dashboard/promoter": selectedTab = .myGigs

@@ -86,6 +86,8 @@ struct NotificationsView: View {
         case "booking_cancelled": return "xmark.circle"
         case "listing_changed": return "arrow.triangle.2.circlepath"
         case "report_update": return "flag"
+        case "review_received": return "star"
+        case "saved_search": return "bell.badge"
         default: return "circle.fill"
         }
     }

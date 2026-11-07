@@ -18,6 +18,7 @@ struct BookingExtras: View {
                     .buttonStyle(.app(.outline, compact: true))
             }
             if let note { Banner(kind: failed ? .error : .success, text: note) }
+            LeaveReviewSection(booking: booking)
         }
     }
 

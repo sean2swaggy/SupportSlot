@@ -91,6 +91,9 @@ struct ArtistProfileView: View {
                 }
                 .padding(.top, -60)
 
+                if a.isVerified { VerifiedExplainer() }
+                ReviewsSummary(profileId: a.id)
+
                 FlowLayout(spacing: 6) {
                     Tag(a.location, tint: Theme.paper)
                     Tag(Catalog.artistSizeLabel(a.artistSize))

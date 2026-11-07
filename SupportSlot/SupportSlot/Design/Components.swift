@@ -30,6 +30,14 @@ struct VerifiedBadge: View {
     }
 }
 
+/// Says in plain words what the badge means. Shown on profile pages (not inside tappable rows).
+struct VerifiedExplainer: View {
+    var body: some View {
+        Text("Verified means the Support Slot team has checked this account’s venue or performing history. It’s never for sale.")
+            .font(Theme.body(12)).foregroundStyle(Theme.paperDim)
+    }
+}
+
 struct StatusPill: View {
     let status: ApplicationStatus
     var body: some View {
