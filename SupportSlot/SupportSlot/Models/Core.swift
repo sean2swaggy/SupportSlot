@@ -81,8 +81,6 @@ struct Artist: Decodable, Identifiable, Equatable, Hashable {
     let websiteUrl: String?
     let monthlyListeners: Int?
     let bio: String
-    let liveVideoThumbnailUrl: String?
-    let liveVideoUrl: String?
     let availability: String
     let travelRadiusMiles: Int
     let verification: String
@@ -93,9 +91,9 @@ struct Artist: Decodable, Identifiable, Equatable, Hashable {
     let artistTracks: [Track]?
     let artistShows: [PastShow]?
 
-    static let baseColumns = "id, handle, name, image_url, banner_image_url, location, location_country, location_region, genres, spotify_url, instagram_url, tiktok_url, soundcloud_url, bandcamp_url, youtube_url, website_url, monthly_listeners, bio, live_video_thumbnail_url, live_video_url, availability, travel_radius_miles, verification, artist_size, last_minute_alerts, member_since"
-    /// For lists and cards: no banner or video thumbnail (they can be large data URLs) and no children.
-    static let listColumns = "id, handle, name, image_url, location, location_country, location_region, genres, spotify_url, instagram_url, tiktok_url, soundcloud_url, bandcamp_url, youtube_url, website_url, monthly_listeners, bio, live_video_url, availability, travel_radius_miles, verification, artist_size, last_minute_alerts, member_since"
+    static let baseColumns = "id, handle, name, image_url, banner_image_url, location, location_country, location_region, genres, spotify_url, instagram_url, tiktok_url, soundcloud_url, bandcamp_url, youtube_url, website_url, monthly_listeners, bio, availability, travel_radius_miles, verification, artist_size, last_minute_alerts, member_since"
+    /// For lists and cards: no banner (it can be a large data URL) and no children.
+    static let listColumns = "id, handle, name, image_url, location, location_country, location_region, genres, spotify_url, instagram_url, tiktok_url, soundcloud_url, bandcamp_url, youtube_url, website_url, monthly_listeners, bio, availability, travel_radius_miles, verification, artist_size, last_minute_alerts, member_since"
     /// A list row that also carries the artist's tracks (for "featured track" lookups).
     static let listWithTracksColumns = "\(listColumns), artist_tracks(\(Track.columns))"
     /// Artist plus tracks and past shows in a single request.

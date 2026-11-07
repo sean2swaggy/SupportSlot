@@ -223,26 +223,26 @@ final class LinkTests: XCTestCase {
 }
 
 final class ProfileChecklistTests: XCTestCase {
-    private func items(image: String? = "", bio: String = "", genres: [String] = [], tracks: Int = 0, links: ArtistLinks = ArtistLinks(), video: String? = nil) -> [ChecklistItem] {
-        ProfileChecklist.items(imageUrl: image, bio: bio, genres: genres, trackCount: tracks, links: links, liveVideoUrl: video)
+    private func items(image: String? = "", bio: String = "", genres: [String] = [], tracks: Int = 0, links: ArtistLinks = ArtistLinks()) -> [ChecklistItem] {
+        ProfileChecklist.items(imageUrl: image, bio: bio, genres: genres, trackCount: tracks, links: links)
     }
 
     func testEmptyProfileHasNothingDone() {
         let c = ProfileChecklist.completion(items())
-        XCTAssertEqual(c.done, 0); XCTAssertEqual(c.total, 6); XCTAssertEqual(c.percent, 0)
+        XCTAssertEqual(c.done, 0); XCTAssertEqual(c.total, 5); XCTAssertEqual(c.percent, 0)
     }
 
     func testCountsEachRealThingAPromoterCanSee() {
         var links = ArtistLinks(); links.spotify = "https://open.spotify.com/artist/1"
-        let i = items(image: "https://x/y.jpg", bio: String(repeating: "x", count: 40), genres: ["Indie"], tracks: 1, links: links, video: "https://youtube.com/watch?v=1")
+        let i = items(image: "https://x/y.jpg", bio: String(repeating: "x", count: 40), genres: ["Indie"], tracks: 1, links: links)
         XCTAssertEqual(ProfileChecklist.completion(i).percent, 100)
     }
 
-    func testUnsafeVideoOrListenLinksDontCount() {
+    func testUnsafeListenLinksDontCount() {
         var links = ArtistLinks(); links.spotify = "javascript:alert(1)"
-        let i = items(links: links, video: "javascript:alert(1)")
-        XCTAssertEqual(i.first(where: { $0.key == "video" })?.done, false)
+        let i = items(links: links)
         XCTAssertEqual(i.first(where: { $0.key == "listen" })?.done, false)
+        XCTAssertNil(i.first(where: { $0.key == "video" }), "there is no live-video item any more")
     }
 
     func testInstagramAloneIsNotAPlaceToListen() {

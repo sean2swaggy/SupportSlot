@@ -211,7 +211,7 @@ struct ChecklistItem: Equatable, Identifiable {
 /// promoter can actually see on the profile, so "complete" means "a promoter has
 /// what they need" — not a made-up score.
 enum ProfileChecklist {
-    static func items(imageUrl: String?, bio: String, genres: [String], trackCount: Int, links: ArtistLinks, liveVideoUrl: String?) -> [ChecklistItem] {
+    static func items(imageUrl: String?, bio: String, genres: [String], trackCount: Int, links: ArtistLinks) -> [ChecklistItem] {
         let listen = links.list.contains(where: { $0.platform.isListening })
         return [
             ChecklistItem(key: "photo", label: "Profile photo", done: !(imageUrl ?? "").isEmpty, hint: "Promoters recognise a face or a logo."),
@@ -219,12 +219,11 @@ enum ProfileChecklist {
             ChecklistItem(key: "genres", label: "At least one genre", done: !genres.isEmpty, hint: "Used to show how well a listing fits you."),
             ChecklistItem(key: "tracks", label: "At least one track", done: trackCount > 0, hint: "You choose one to feature on each application."),
             ChecklistItem(key: "listen", label: "A place to listen", done: listen, hint: "Add a Spotify, SoundCloud, Bandcamp or YouTube link."),
-            ChecklistItem(key: "video", label: "A live performance video", done: SafeLink.isSafe(liveVideoUrl), hint: "Promoters booking a support act want to see you play live."),
         ]
     }
 
     static func items(for artist: Artist) -> [ChecklistItem] {
-        items(imageUrl: artist.imageUrl, bio: artist.bio, genres: artist.genres, trackCount: artist.tracks.count, links: ArtistLinks(artist: artist), liveVideoUrl: artist.liveVideoUrl)
+        items(imageUrl: artist.imageUrl, bio: artist.bio, genres: artist.genres, trackCount: artist.tracks.count, links: ArtistLinks(artist: artist))
     }
 
     static func completion(_ items: [ChecklistItem]) -> (done: Int, total: Int, percent: Int) {

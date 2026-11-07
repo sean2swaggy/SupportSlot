@@ -130,17 +130,6 @@ struct ArtistProfileView: View {
                     }
                 }
 
-                if let video = SafeLink.url(a.liveVideoUrl) {
-                    section("Live") {
-                        Button { openURL(video) } label: {
-                            HStack { Image(systemName: "play.rectangle.fill").foregroundStyle(Theme.acid); Text("Watch a live performance"); Spacer(); Image(systemName: "arrow.up.right").font(.system(size: 12)) }
-                                .font(Theme.body(15, weight: .medium)).foregroundStyle(Theme.paper).padding(.horizontal, 14).frame(minHeight: 52)
-                                .overlay(Rectangle().stroke(Theme.inkBorder, lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-
                 if !links.list.isEmpty {
                     section("Listen & follow") {
                         FlowLayout(spacing: 8) {

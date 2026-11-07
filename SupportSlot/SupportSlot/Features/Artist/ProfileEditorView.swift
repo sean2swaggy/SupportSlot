@@ -18,7 +18,7 @@ struct ProfileEditorView: View {
                     }
                     checklist(items, c)
                     PhotosEditor(artist: artist)
-                    BasicsEditor(artist: artist).id(artist.name + artist.bio + artist.location + artist.locationCountry + artist.genres.joined() + artist.availability + String(artist.travelRadiusMiles) + (artist.liveVideoUrl ?? "") + artist.artistSize)
+                    BasicsEditor(artist: artist).id(artist.name + artist.bio + artist.location + artist.locationCountry + artist.genres.joined() + artist.availability + String(artist.travelRadiusMiles) + artist.artistSize)
                     TracksEditor(artist: artist)
                     LinksEditor(artist: artist)
                     ListenersEditor(artist: artist)
@@ -128,7 +128,6 @@ private struct BasicsEditor: View {
     @State private var availability: String
     @State private var artistSize: String
     @State private var radius: Int?
-    @State private var video: String
     @State private var error: String?
     @State private var saved = false
 
@@ -137,7 +136,7 @@ private struct BasicsEditor: View {
         _name = State(initialValue: artist.name); _place = State(initialValue: artist.place)
         _genres = State(initialValue: artist.genres); _bio = State(initialValue: artist.bio)
         _availability = State(initialValue: artist.availability); _artistSize = State(initialValue: artist.artistSize)
-        _radius = State(initialValue: artist.travelRadiusMiles); _video = State(initialValue: artist.liveVideoUrl ?? "")
+        _radius = State(initialValue: artist.travelRadiusMiles)
     }
 
     var body: some View {
@@ -151,9 +150,6 @@ private struct BasicsEditor: View {
             LabeledField(label: "Bio", hint: "\(bio.count)/1000") {
                 TextArea(text: $bio, placeholder: "What do you sound like, and what’s your live show like?", minHeight: 120)
                     .onChange(of: bio) { _, new in if new.count > 1000 { bio = String(new.prefix(1000)) } }
-            }
-            LabeledField(label: "Live performance video (link)", hint: "Shown to promoters as a link to watch you play live. We don’t host the video.") {
-                TextField("https://youtube.com/watch?v=…", text: $video).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().fieldStyle()
             }
             AsyncButton(compact: true) { await save() } label: { Text("Save") }
             SaveStatus(error: error, saved: saved)
@@ -175,13 +171,11 @@ private struct BasicsEditor: View {
         if genres.isEmpty { error = "Choose at least one genre."; return }
         guard let place, place.validationError == nil else { error = place?.validationError ?? "Choose where you’re based."; return }
         guard let miles = radius, (0...500).contains(miles) else { error = "Travel radius must be a whole number of miles between 0 and 500."; return }
-        let link = video.trimmingCharacters(in: .whitespaces)
-        if !link.isEmpty, !SafeLink.isSafe(link) { error = "The live video link must start with https://"; return }
         do {
             try await store.perform {
                 if place != artist.place { try await store.db.setMyLocation(place) }
                 try await store.db.updateArtistBasics(id: artist.id, name: trimmedName, genres: genres, bio: bio.trimmingCharacters(in: .whitespacesAndNewlines),
-                                                      availability: availability, travelRadiusMiles: miles, artistSize: artistSize, liveVideoUrl: link.isEmpty ? nil : link)
+                                                      availability: availability, travelRadiusMiles: miles, artistSize: artistSize)
             }
             saved = true
         } catch { self.error = (error as? AppError)?.message }

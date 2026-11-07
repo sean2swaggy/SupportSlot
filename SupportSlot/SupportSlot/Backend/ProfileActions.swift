@@ -4,7 +4,7 @@ extension Database {
     // MARK: Artist profile
 
     func updateArtistBasics(id: ID, name: String, genres: [String], bio: String, availability: String,
-                            travelRadiusMiles: Int, artistSize: String, liveVideoUrl: String?) async throws {
+                            travelRadiusMiles: Int, artistSize: String) async throws {
         let rows = try await update(Query("artists").eq("id", id), [
             "name": .string(name),
             "genres": .strings(genres),
@@ -12,7 +12,6 @@ extension Database {
             "availability": .string(availability),
             "travel_radius_miles": .int(travelRadiusMiles),
             "artist_size": .string(artistSize),
-            "live_video_url": .optional(liveVideoUrl),
         ] as Patch)
         if rows.isEmpty { throw AppError("Your profile couldn’t be saved.") }
     }
