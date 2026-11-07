@@ -4,6 +4,8 @@ import SwiftUI
 struct MeView: View {
     @Environment(AppStore.self) private var store
     @State private var alertsError: String?
+    @State private var alertsOn: Bool?        // what the switch shows while a change is being saved
+    @State private var savingAlerts = false
 
     var body: some View {
         ScrollView {
@@ -39,12 +41,28 @@ struct MeView: View {
             row("Edit your profile", detail: "\(c.done)/\(c.total) done", icon: "person.crop.square") { ProfileEditorView() }
             row("Your public page", detail: "How promoters see you", icon: "eye") { ArtistProfileView(handle: artist.handle, preloaded: artist) }
             Card {
-                Toggle(isOn: Binding(get: { artist.lastMinuteAlerts }, set: { v in Task { await setAlerts(v, artist) } })) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Last-minute alerts").font(Theme.body(15, weight: .medium)).foregroundStyle(Theme.paper)
-                        Text("Tell me when a promoter within my travel radius needs a support act at short notice.").font(Theme.body(12)).foregroundStyle(Theme.paperDim)
+                let isOn = alertsOn ?? artist.lastMinuteAlerts
+                // The whole row is the button (the switch itself is only a picture of the state),
+                // so tapping the words works as well as tapping the switch.
+                Button { Task { await setAlerts(!isOn, artist) } } label: {
+                    HStack(alignment: .center, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Last-minute alerts").font(Theme.body(15, weight: .medium)).foregroundStyle(Theme.paper)
+                            Text("Tell me when a promoter within my travel radius needs a support act at short notice.").font(Theme.body(12)).foregroundStyle(Theme.paperDim)
+                                .multilineTextAlignment(.leading)
+                        }
+                        Spacer(minLength: 8)
+                        Toggle("", isOn: .constant(isOn)).labelsHidden().tint(Theme.acid)
+                            .allowsHitTesting(false).accessibilityHidden(true)
                     }
-                }.tint(Theme.acid)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(savingAlerts)
+                .accessibilityLabel("Last-minute alerts")
+                .accessibilityValue(isOn ? "On" : "Off")
+                .accessibilityAddTraits(.isToggle)
                 FieldError(message: alertsError)
             }
         }
@@ -53,8 +71,11 @@ struct MeView: View {
 
     private func setAlerts(_ v: Bool, _ artist: Artist) async {
         alertsError = nil
+        alertsOn = v            // show the new state at once, not after the round trip
+        savingAlerts = true
+        defer { savingAlerts = false; alertsOn = nil } // afterwards the server's answer is what is shown
         do { try await store.perform { try await store.db.setLastMinuteAlerts(id: artist.id, enabled: v) } }
-        catch { alertsError = (error as? AppError)?.message }
+        catch { alertsError = (error as? AppError)?.message ?? "That setting couldn’t be saved. Try again." }
     }
 
     // MARK: Promoter
