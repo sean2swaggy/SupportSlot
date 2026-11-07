@@ -59,6 +59,7 @@ struct AddVenueSheet: View {
     let onAdded: (Venue) -> Void
     @State private var name = ""
     @State private var address = ""
+    @State private var postcode = ""
     @State private var capacity: Int?
     @State private var place: Place?
     @State private var submitted = false
@@ -67,10 +68,18 @@ struct AddVenueSheet: View {
     private var problems: [String: String] {
         var p: [String: String] = [:]
         if name.trimmingCharacters(in: .whitespaces).count < 2 { p["name"] = "Enter the venue’s name." }
-        if address.trimmingCharacters(in: .whitespaces).count < 3 { p["address"] = "Enter the venue’s address." }
+        if address.trimmingCharacters(in: .whitespaces).count < 3 { p["address"] = "Enter the venue’s street address." }
+        if Self.cleanPostcode(postcode) == nil { p["postcode"] = "Enter a valid UK postcode, e.g. B14 7AA." }
         if (capacity ?? 0) < 1 { p["capacity"] = "Enter the capacity (at least 1)." }
         if place == nil { p["place"] = "Choose where the venue is." }
         return p
+    }
+
+    /// Upper-cases and spaces a UK postcode, or nil if it isn't shaped like one.
+    static func cleanPostcode(_ raw: String) -> String? {
+        let t = raw.uppercased().filter { !$0.isWhitespace }
+        guard t.range(of: "^[A-Z]{1,2}[0-9][A-Z0-9]?[0-9][A-Z]{2}$", options: .regularExpression) != nil else { return nil }
+        return String(t.dropLast(3)) + " " + String(t.suffix(3))
     }
 
     var body: some View {
@@ -79,12 +88,10 @@ struct AddVenueSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Anywhere in England, Scotland, Wales or Northern Ireland. The venue is shown as unverified until our team has checked it.").dimBody(14)
                     PlaceField(label: "Where is it?", place: $place, mode: .venue, error: submitted ? problems["place"] : nil,
-                               hint: "Search for the venue or its town. Apple Maps gives the map position used for distances.") { result in
-                        if name.isEmpty, let n = result.venueName { name = n }
-                        if address.isEmpty, let s = result.street { address = s }
-                    }
+                               hint: "Search for your venue’s town or city. This sets the map position used for distances.")
                     LabeledField(label: "Venue name", error: submitted ? problems["name"] : nil) { TextField("e.g. The Old Hall", text: $name).fieldStyle(invalid: submitted && problems["name"] != nil) }
-                    LabeledField(label: "Address", error: submitted ? problems["address"] : nil) { TextField("Street, town, postcode", text: $address).fieldStyle(invalid: submitted && problems["address"] != nil) }
+                    LabeledField(label: "Street address", error: submitted ? problems["address"] : nil) { TextField("e.g. 12 High Street", text: $address).fieldStyle(invalid: submitted && problems["address"] != nil) }
+                    LabeledField(label: "Postcode", error: submitted ? problems["postcode"] : nil) { TextField("e.g. B14 7AA", text: $postcode).textInputAutocapitalization(.characters).autocorrectionDisabled().fieldStyle(invalid: submitted && problems["postcode"] != nil) }
                     LabeledField(label: "Capacity", error: submitted ? problems["capacity"] : nil) { IntField(value: $capacity, placeholder: "250", invalid: submitted && problems["capacity"] != nil) }
                     if let error { Banner(kind: .error, text: error) }
                     AsyncButton { await save() } label: { Text("Add venue") }
@@ -102,7 +109,7 @@ struct AddVenueSheet: View {
         submitted = true; error = nil
         guard problems.isEmpty, let place, let capacity else { return }
         do {
-            let id = try await store.db.createVenue(name: name.trimmingCharacters(in: .whitespacesAndNewlines), address: address.trimmingCharacters(in: .whitespacesAndNewlines), capacity: capacity, place: place)
+            let id = try await store.db.createVenue(name: name.trimmingCharacters(in: .whitespacesAndNewlines), address: address.trimmingCharacters(in: .whitespacesAndNewlines) + ", " + (Self.cleanPostcode(postcode) ?? postcode), capacity: capacity, place: place)
             guard let venue = try await store.db.venue(id: id) else { throw AppError.generic("The venue was added but couldn’t be loaded. Pull to refresh.") }
             onAdded(venue); dismiss()
         } catch { self.error = (error as? AppError)?.message ?? "We couldn’t add that venue." }
