@@ -226,3 +226,34 @@ section { margin-bottom: 1.75rem; }
   .footer { padding-bottom: 80px; }
 }
 @media (prefers-reduced-motion: reduce) { .skeleton-row { animation: none; } }
+
+/* accounts, alerts, messages */
+.account { display: flex; align-items: center; gap: .75rem; margin-left: auto; }
+.topnav { flex: 1; }
+.account .who { color: var(--ink); font-weight: 600; text-decoration: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account .bell, .tab-alerts { position: relative; color: var(--ink-2); text-decoration: none; font-weight: 500; }
+.account .bell.active { color: var(--ink); }
+.btn.small { min-height: 36px; padding: 6px 12px; font-size: .88rem; }
+.pip { display: inline-block; background: var(--clay); color: #fff; border-radius: 999px; font-size: .7rem; font-weight: 700; min-width: 18px; padding: 1px 5px; margin-left: 5px; text-align: center; line-height: 1.4; }
+.demo-box { margin-top: 2.5rem; border-top: 1px solid var(--line); padding-top: 1.25rem; }
+.note { grid-template-columns: 14px 1fr; min-height: 64px; }
+.note-dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; }
+.note.unread .note-dot { background: var(--clay); }
+.note.unread .note-text { font-weight: 600; }
+.note-text { margin: 0; }
+.bubbles { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-direction: column; gap: .75rem; border-top: 1px solid var(--ink); padding-top: 1rem; }
+.bubbles li { max-width: 85%; padding: 10px 14px; border-radius: 4px; }
+.bubbles li p { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubbles .mine { align-self: flex-end; background: var(--ink); color: var(--paper); }
+.bubbles .mine .meta { color: #cfc5b5; }
+.bubbles .theirs { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); }
+.bubbles .meta { font-size: .75rem; margin: 0; }
+.composer { display: grid; grid-template-columns: 1fr auto; gap: .5rem; align-items: end; position: sticky; bottom: 0; background: var(--paper); padding: .75rem 0; }
+.composer .field-error { grid-column: 1 / -1; }
+@media (max-width: 640px) {
+  .account .bell, .account .btn-quiet { display: none; }
+  .topbar { gap: .75rem; }
+  .tabbar a { padding: 16px 4px; font-size: .88rem; }
+  .composer { bottom: 56px; padding-bottom: .75rem; }
+  .page.thread { padding-bottom: 130px; }
+}

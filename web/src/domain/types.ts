@@ -56,7 +56,14 @@ export interface Booking {
   cancelledAt?: string;
 }
 
+export interface Account { userId: string; email: string; salt: string; hash: string }
+export interface Notification { id: string; userId: string; text: string; link: string; createdAt: string; read: boolean }
+export interface Message { id: string; listingId: string; artistId: string; fromId: string; text: string; createdAt: string }
+
 export interface Db {
+  accounts: Account[];
+  notifications: Notification[];
+  messages: Message[];
   users: User[];
   listings: Listing[];
   applications: Application[];
@@ -81,3 +88,12 @@ export interface ApplicationView extends Application {
 export interface ApplicantView extends Application {
   artist: User;
 }
+
+export interface ThreadView {
+  listing: Listing;
+  artist: User;
+  promoter: User;
+  messages: Message[];
+}
+export interface ThreadSummary { listing: Listing; other: User; artistId: string; last?: Message; unreadHint: boolean }
+export interface NewAccount { email: string; password: string; role: Role; name: string; city: string; genres: string[]; blurb: string }

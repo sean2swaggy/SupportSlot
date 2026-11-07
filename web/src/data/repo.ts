@@ -1,4 +1,5 @@
 import type {
+  NewAccount, Notification, ThreadSummary, ThreadView,
   ApplicantView, ApplicationView, BookingView, Listing, SlotView, User,
 } from "../domain/types";
 
@@ -13,7 +14,17 @@ export interface NewListing {
  *  Every write is validated by the implementation (who is asking, what state
  *  things are in) and re-read by the caller afterwards. */
 export interface Repo {
-  users(): Promise<User[]>;
+  // accounts (local demo auth; a real backend replaces these)
+  signUp(a: NewAccount): Promise<User>;
+  signIn(email: string, password: string): Promise<User>;
+  user(id: string): Promise<User | null>;
+  updateProfile(userId: string, patch: Pick<User, "name" | "city" | "genres" | "blurb">): Promise<User>;
+  // notifications and messages
+  notifications(userId: string): Promise<Notification[]>;
+  markAllRead(userId: string): Promise<void>;
+  threads(userId: string): Promise<ThreadSummary[]>;
+  thread(listingId: string, artistId: string, userId: string): Promise<ThreadView>;
+  sendMessage(listingId: string, artistId: string, fromId: string, text: string): Promise<void>;
   // artist
   openSlots(artistId: string, f: SlotFilters): Promise<SlotView[]>;
   slot(id: string, artistId: string): Promise<SlotView>;
@@ -34,7 +45,7 @@ export interface Repo {
 }
 
 export class RepoError extends Error {
-  constructor(public code: "not_found" | "forbidden" | "conflict" | "invalid" | "network", message: string) {
+  constructor(public code: "not_found" | "forbidden" | "auth" | "conflict" | "invalid" | "network", message: string) {
     super(message);
   }
 }

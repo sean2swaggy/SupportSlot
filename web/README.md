@@ -8,19 +8,21 @@ entirely on sample data stored in the browser; nothing talks to Supabase yet.
 cd web
 npm install
 npm run dev        # http://127.0.0.1:5173
-npm test           # rule tests for the data layer (8)
+npm test           # rule tests for the data layer (14)
 npm run build      # type-check + production build
 ```
 
 ## Try it
-The landing page's "I'm an artist / I'm a promoter" buttons (or the profile menu
-at the top right) sign you in as a sample person. Suggested run-through:
-1. As **Maya Okafor** (artist): Find slots → open a slot → send a request.
-2. Switch to **Harbour Lights Presents** (promoter): My listings → open the slot
-   → Book Maya. You land on the confirmed booking.
-3. Switch back to Maya: My gigs shows it under Upcoming. Cancel it with a reason;
-   the slot reopens.
-4. As a promoter, Post a slot, then watch it appear on the artist board.
+Join as an artist or promoter on the landing page, or sign in with a sample
+account (buttons on the sign-in page; password `demo1234`, emails
+`maya@`, `orchard@`, `harbour@`, `north@example.test`). Suggested run-through:
+1. Join as a **promoter**, post a slot.
+2. Sign out, sign in as **Maya** (artist), open the slot, send a request, then
+   message the promoter.
+3. Sign back in as the promoter: the Alerts badge shows the request and message.
+   Reply, then Book Maya.
+4. As Maya, Alerts shows the booking; My gigs lists it. Cancel with a reason and
+   the slot reopens (the promoter is notified).
 5. Add `?simulate=error` to any URL to see the error states.
 
 ## Structure
@@ -53,14 +55,18 @@ tests/         rules: who may do what, state transitions, idempotency, dates
   declines the other pending requests.
 - Sample data is fictional and generated relative to today. Reset it by clearing
   this site's local storage.
-- Sign-in is a demo persona switch, stored in local storage. Not secure.
+- Accounts are real in the sense that sign-up, sign-in (salted SHA-256), profiles,
+  in-app alerts and per-request messaging all work, but they live in this browser's
+  local storage: other devices and browsers see none of it. Not secure.
+- Messaging is one thread per request between the artist and that listing's
+  promoter; alerts are in-app only (no email or push). Threads refresh every 5 s.
 
 ## Needs real services
-- **Auth** (Supabase Auth with TOTP like the iOS app) and real profiles.
+- **Auth** (Supabase Auth with TOTP like the iOS app) in place of local accounts.
 - **Persistence and rules in the database** (shared with the iOS app's schema;
   new migration needed for any web-only fields). Browser storage is per-device
   and last-write-wins.
-- **Notifications** (nobody is told when they're booked or cancelled except by
-  opening the app) and any email.
-- **Not done:** profile editing, messaging, image uploads, accessibility audit
-  with a screen reader, cross-browser testing beyond the in-app browser.
+- **Shared data, realtime messaging and email/push** so people on different
+  devices actually see each other's requests and messages.
+- **Not done:** image uploads, password reset, accessibility audit with a screen
+  reader, cross-browser testing beyond the in-app browser.

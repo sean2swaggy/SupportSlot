@@ -61,7 +61,7 @@ function Inner({ promoterId }: { promoterId: string }) {
                 <p className="prose">“{a.message}”</p>
                 <p className="small-note">{a.artist.blurb}</p>
                 {a.status === "pending" && l.status === "open" && !past && (
-                  <div className="actions"><button className="btn btn-primary" onClick={() => setPick(a)}>Book {a.artist.name}</button><button className="btn btn-quiet" onClick={() => decline(a)}>Decline</button></div>
+                  <div className="actions"><button className="btn btn-primary" onClick={() => setPick(a)}>Book {a.artist.name}</button><button className="btn btn-quiet" onClick={() => decline(a)}>Decline</button><Link className="btn btn-quiet" to={`/messages/${l.id}/${a.artistId}`}>Message</Link></div>
                 )}
               </li>
             ))}

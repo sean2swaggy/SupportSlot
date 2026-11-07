@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { repo } from "./data";
-import type { User } from "./domain/types";
+import type { NewAccount, User } from "./domain/types";
 
 /* ---------- async loading ---------- */
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
@@ -19,27 +19,39 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
   return { ...state, reload: load };
 }
 
-/* ---------- demo session (no real auth yet) ---------- */
-const PERSONA_KEY = "support-slot:persona";
-interface Session { user: User | null; users: User[]; signInAs(id: string | null): void }
-const Ctx = createContext<Session>({ user: null, users: [], signInAs: () => {} });
+/* ---------- session (local demo accounts) ---------- */
+const SESSION_KEY = "support-slot:session";
+interface Session {
+  user: User | null;
+  signIn(email: string, password: string): Promise<User>;
+  signUp(a: NewAccount): Promise<User>;
+  signOut(): void;
+  setUser(u: User): void;
+}
+const Ctx = createContext<Session>({ user: null, signIn: async () => { throw new Error("no session"); }, signUp: async () => { throw new Error("no session"); }, signOut: () => {}, setUser: () => {} });
 export const useSession = () => useContext(Ctx);
 
+const remember = (id: string | null) => {
+  try { id ? localStorage.setItem(SESSION_KEY, id) : localStorage.removeItem(SESSION_KEY); } catch { /* private mode */ }
+};
+
 export function SessionProvider({ children, fallback }: { children: ReactNode; fallback: ReactNode }) {
-  const [users, setUsers] = useState<User[] | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [id, setId] = useState<string | null>(() => {
-    try { return localStorage.getItem(PERSONA_KEY); } catch { return null; }
-  });
-  const load = useCallback(() => { setError(null); repo.users().then(setUsers, setError); }, []);
-  useEffect(load, [load]);
-  const signInAs = useCallback((next: string | null) => {
-    setId(next);
-    try { next ? localStorage.setItem(PERSONA_KEY, next) : localStorage.removeItem(PERSONA_KEY); } catch { /* private mode */ }
+  const [state, setState] = useState<{ ready: boolean; user: User | null }>({ ready: false, user: null });
+  useEffect(() => {
+    let id: string | null = null;
+    try { id = localStorage.getItem(SESSION_KEY); } catch { /* ignore */ }
+    if (!id) { setState({ ready: true, user: null }); return; }
+    repo.user(id).then((user) => setState({ ready: true, user }), () => setState({ ready: true, user: null }));
   }, []);
-  if (error) return <div className="page"><div className="state state-error" role="alert"><h2>Support Slot couldn't start</h2><p>{error.message}</p><button className="btn" onClick={load}>Try again</button></div></div>;
-  if (!users) return <>{fallback}</>;
-  return <Ctx.Provider value={{ user: users.find((u) => u.id === id) ?? null, users, signInAs }}>{children}</Ctx.Provider>;
+  const value: Session = {
+    user: state.user,
+    signIn: async (email, password) => { const user = await repo.signIn(email, password); remember(user.id); setState({ ready: true, user }); return user; },
+    signUp: async (a) => { const user = await repo.signUp(a); remember(user.id); setState({ ready: true, user }); return user; },
+    signOut: () => { remember(null); setState({ ready: true, user: null }); },
+    setUser: (user) => setState({ ready: true, user }),
+  };
+  if (!state.ready) return <>{fallback}</>;
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 /* ---------- notices ---------- */

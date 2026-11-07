@@ -54,6 +54,7 @@ function Inner({ user }: { user: User }) {
         <div><dt>Set</dt><dd>{booking.listing.setTime}, {booking.listing.setMinutes} min</dd></div>
         <div className="fact-fee"><dt>Agreed fee</dt><dd>{pounds(booking.feePence)}</dd></div>
       </dl>
+      <p><Link className="btn" to={`/messages/${booking.listingId}/${booking.artistId}`}>Message {other.name}</Link></p>
       <section><h2>Venue notes</h2><p className="prose">{booking.listing.notes || "None."}</p></section>
       {booking.status === "confirmed" && <section><h2>Payment</h2><p className="prose">{isArtist ? `${booking.promoter.name} pays you ${pounds(booking.feePence)} directly. Agree how and when with them.` : `You pay ${booking.artist.name} ${pounds(booking.feePence)} directly. Support Slot doesn't handle payment.`}</p></section>}
 

@@ -46,5 +46,5 @@ export function seed(today = todayLondon()): Db {
     { id: "b-3", ref: "SS-3388", listingId: "l-p2", applicationId: "a-5", artistId: "u-maya", promoterId: "u-north", feePence: 9000, status: "cancelled", createdAt: addDays(today, -22) + "T09:00:00Z",
       cancelledBy: "u-north", cancelReason: "Headliner pulled out; the show was called off.", cancelledAt: addDays(today, -14) + "T09:00:00Z" },
   ];
-  return { users, listings, applications, bookings };
+  return { accounts: [], notifications: [], messages: [], users, listings, applications, bookings };
 }

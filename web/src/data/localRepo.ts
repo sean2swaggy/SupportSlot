@@ -1,7 +1,10 @@
-import { isPast, todayLondon } from "../domain/dates";
+import { dayNum, isPast, monthShort, todayLondon, weekday } from "../domain/dates";
+
+const when = (iso: string) => `${weekday(iso)} ${dayNum(iso)} ${monthShort(iso)}`;
 import type {
-  Application, ApplicantView, ApplicationView, Booking, BookingView, Db, Listing, SlotView, User,
+  Application, ApplicantView, NewAccount, ApplicationView, Booking, BookingView, Db, Listing, SlotView, ThreadSummary, ThreadView, User,
 } from "../domain/types";
+import { DEMO_EMAILS, DEMO_PASSWORD, hashPassword, newSalt } from "./auth";
 import { RepoError, type NewListing, type Repo, type SlotFilters } from "./repo";
 import { seed } from "./seed";
 
@@ -25,11 +28,22 @@ export function createLocalRepo(opts: Options = {}): Repo & { reset(): void } {
   const today = opts.today ?? (() => todayLondon());
   let memory: Db | null = null;
 
+  let demoReady: Promise<void> | null = null;
+  const ensureDemoAccounts = () => (demoReady ??= (async () => {
+    const db = load();
+    if (db.accounts.length) return;
+    for (const [userId, email] of Object.entries(DEMO_EMAILS)) {
+      const salt = newSalt();
+      db.accounts.push({ userId, email, salt, hash: await hashPassword(DEMO_PASSWORD, salt) });
+    }
+    save(db);
+  })());
+
   const load = (): Db => {
     if (storage) {
       try {
         const raw = storage.getItem(KEY);
-        if (raw) return JSON.parse(raw) as Db;
+        if (raw) { const d = JSON.parse(raw) as Db; d.accounts ??= []; d.notifications ??= []; d.messages ??= []; return d; }
       } catch { /* fall through to seed */ }
       const fresh = seed(today());
       storage.setItem(KEY, JSON.stringify(fresh));
@@ -76,13 +90,74 @@ export function createLocalRepo(opts: Options = {}): Repo & { reset(): void } {
   const requireRole = (db: Db, id: string, role: "artist" | "promoter") => {
     if (user(db, id).role !== role) throw new RepoError("forbidden", `Only ${role}s can do that.`);
   };
+  const notify = (db: Db, userId: string, text: string, link: string) =>
+    db.notifications.push({ id: newId("n"), userId, text, link, createdAt: new Date().toISOString(), read: false });
   const newId = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`;
   const newRef = () => `SS-${Math.floor(1000 + Math.random() * 9000)}`;
 
   const repo: Repo & { reset(): void } = {
-    reset() { if (storage) storage.removeItem(KEY); memory = null; },
+    reset() { if (storage) storage.removeItem(KEY); memory = null; demoReady = null; },
     // the profile list is cached by the app shell; deliberately not subject to simulated failures
-    users: async () => load().users,
+    signUp: async (a: NewAccount) => {
+      await gate(); await ensureDemoAccounts();
+      const db = load();
+      const email = a.email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new RepoError("invalid", "Enter a valid email address.");
+      if (a.password.length < 8) throw new RepoError("invalid", "Use a password of at least 8 characters.");
+      if (!a.name.trim()) throw new RepoError("invalid", a.role === "artist" ? "Add your artist or band name." : "Add your promoter name.");
+      if (db.accounts.some((x) => x.email === email)) throw new RepoError("conflict", "There's already an account with that email. Try signing in.");
+      const u: User = { id: newId("u"), role: a.role, name: a.name.trim().slice(0, 80), city: a.city.trim(), genres: a.genres, blurb: a.blurb.trim().slice(0, 300) };
+      const salt = newSalt();
+      db.users.push(u);
+      db.accounts.push({ userId: u.id, email, salt, hash: await hashPassword(a.password, salt) });
+      save(db);
+      return u;
+    },
+    signIn: async (emailIn, password) => {
+      await gate(); await ensureDemoAccounts();
+      const db = load();
+      const acc = db.accounts.find((x) => x.email === emailIn.trim().toLowerCase());
+      // same message for unknown email and wrong password
+      if (!acc || (await hashPassword(password, acc.salt)) !== acc.hash) throw new RepoError("auth", "That email and password don't match.");
+      return user(db, acc.userId);
+    },
+    user: async (id) => load().users.find((u) => u.id === id) ?? null,
+    updateProfile: (userId, patch) => write((db) => {
+      const u = user(db, userId);
+      if (!patch.name.trim()) throw new RepoError("invalid", "Name can't be empty.");
+      u.name = patch.name.trim().slice(0, 80); u.city = patch.city.trim(); u.genres = patch.genres; u.blurb = patch.blurb.trim().slice(0, 300);
+      return u;
+    }),
+    notifications: (userId) => read((db) => db.notifications.filter((n) => n.userId === userId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50)),
+    markAllRead: (userId) => write((db) => { db.notifications.forEach((n) => { if (n.userId === userId) n.read = true; }); }),
+    threads: (userId) => read((db) => {
+      const mine = db.applications
+        .filter((a) => { const l = listing(db, a.listingId); return a.artistId === userId || l.promoterId === userId; })
+        .filter((a) => a.status !== "withdrawn");
+      return mine.map((a): ThreadSummary => {
+        const l = listing(db, a.listingId);
+        const msgs = db.messages.filter((m) => m.listingId === a.listingId && m.artistId === a.artistId);
+        const last = msgs[msgs.length - 1];
+        return { listing: l, artistId: a.artistId, other: user(db, a.artistId === userId ? l.promoterId : a.artistId), last, unreadHint: !!last && last.fromId !== userId };
+      }).sort((a, b) => (a.last && b.last ? b.last.createdAt.localeCompare(a.last.createdAt) : a.last ? -1 : b.last ? 1 : a.listing.date.localeCompare(b.listing.date)));
+    }),
+    thread: (listingId, artistId, userId) => read((db): ThreadView => {
+      const l = listing(db, listingId);
+      if (userId !== artistId && userId !== l.promoterId) throw new RepoError("forbidden", "That conversation isn't yours.");
+      if (!db.applications.some((a) => a.listingId === listingId && a.artistId === artistId)) throw new RepoError("not_found", "There's no conversation for that request.");
+      return { listing: l, artist: user(db, artistId), promoter: user(db, l.promoterId), messages: db.messages.filter((m) => m.listingId === listingId && m.artistId === artistId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)) };
+    }),
+    sendMessage: (listingId, artistId, fromId, text) => write((db) => {
+      const l = listing(db, listingId);
+      if (fromId !== artistId && fromId !== l.promoterId) throw new RepoError("forbidden", "That conversation isn't yours.");
+      if (!db.applications.some((a) => a.listingId === listingId && a.artistId === artistId && a.status !== "withdrawn")) throw new RepoError("conflict", "This conversation is closed.");
+      const t = text.trim();
+      if (!t) throw new RepoError("invalid", "Write a message first.");
+      db.messages.push({ id: newId("m"), listingId, artistId, fromId, text: t.slice(0, 1000), createdAt: new Date().toISOString() });
+      const to = fromId === artistId ? l.promoterId : artistId;
+      notify(db, to, `${user(db, fromId).name} sent a message about ${l.venue}.`, `/messages/${listingId}/${artistId}`);
+    }),
+
 
     openSlots: (artistId, f: SlotFilters) => read((db) => {
       const q = f.q?.trim().toLowerCase();
@@ -103,6 +178,7 @@ export function createLocalRepo(opts: Options = {}): Repo & { reset(): void } {
       if (db.applications.some((a) => a.listingId === listingId && a.artistId === artistId && (a.status === "pending" || a.status === "accepted"))) return; // idempotent
       if (message.trim().length < 10) throw new RepoError("invalid", "Tell the promoter a little about your set (at least 10 characters).");
       db.applications.push({ id: newId("a"), listingId, artistId, message: message.trim().slice(0, 600), status: "pending", createdAt: new Date().toISOString() });
+      notify(db, l.promoterId, `${user(db, artistId).name} requested ${l.venue} on ${when(l.date)}.`, `/listings/${l.id}`);
     }),
     withdraw: (applicationId, artistId) => write((db) => {
       const a = db.applications.find((x) => x.id === applicationId);
@@ -110,6 +186,8 @@ export function createLocalRepo(opts: Options = {}): Repo & { reset(): void } {
       if (a.status === "withdrawn") return;
       if (a.status !== "pending") throw new RepoError("conflict", "Only a pending request can be withdrawn. Cancel the booking instead.");
       a.status = "withdrawn";
+      const wl = listing(db, a.listingId);
+      notify(db, wl.promoterId, `${user(db, a.artistId).name} withdrew their request for ${wl.venue}.`, `/listings/${wl.id}`);
     }),
     myApplications: (artistId) => read((db) => db.applications
       .filter((a) => a.artistId === artistId && a.status === "pending")
@@ -134,6 +212,8 @@ export function createLocalRepo(opts: Options = {}): Repo & { reset(): void } {
       if (reason.trim().length < 5) throw new RepoError("invalid", "Please give a short reason; the other person will see it.");
       b.status = "cancelled"; b.cancelledBy = userId; b.cancelReason = reason.trim().slice(0, 400); b.cancelledAt = new Date().toISOString();
       const app = db.applications.find((a) => a.id === b.applicationId);
+      const other = userId === b.artistId ? b.promoterId : b.artistId;
+      notify(db, other, `${user(db, userId).name} cancelled the booking at ${l.venue} on ${when(l.date)}: “${b.cancelReason}”`, `/bookings/${b.id}`);
       if (userId === b.artistId) {
         // artist drops out: the slot reopens for other acts
         l.status = "open";
@@ -164,7 +244,7 @@ export function createLocalRepo(opts: Options = {}): Repo & { reset(): void } {
       if (l.status === "cancelled") return;
       if (db.bookings.some((b) => b.listingId === id && b.status === "confirmed")) throw new RepoError("conflict", "This slot has a confirmed act. Cancel the booking instead so they're told why.");
       l.status = "cancelled";
-      db.applications.filter((a) => a.listingId === id && a.status === "pending").forEach((a) => { a.status = "declined"; });
+      db.applications.filter((a) => a.listingId === id && a.status === "pending").forEach((a) => { a.status = "declined"; notify(db, a.artistId, `${l.venue} on ${when(l.date)} was cancelled by the promoter.`, `/slots/${l.id}`); });
     }),
     applicants: (listingId, promoterId) => read((db) => {
       const l = listing(db, listingId);
@@ -185,10 +265,11 @@ export function createLocalRepo(opts: Options = {}): Repo & { reset(): void } {
       if (a.status !== "pending") throw new RepoError("conflict", "That request is no longer pending.");
       if (l.status !== "open" || isPast(l.date, today())) throw new RepoError("conflict", "This slot is no longer open.");
       a.status = "accepted";
-      db.applications.filter((o) => o.listingId === l.id && o.id !== a.id && o.status === "pending").forEach((o) => { o.status = "declined"; });
+      db.applications.filter((o) => o.listingId === l.id && o.id !== a.id && o.status === "pending").forEach((o) => { o.status = "declined"; notify(db, o.artistId, `${l.venue} on ${when(l.date)} went to another act.`, `/slots/${l.id}`); });
       l.status = "booked";
       const b: Booking = { id: newId("b"), ref: newRef(), listingId: l.id, applicationId: a.id, artistId: a.artistId, promoterId, feePence: l.feePence, status: "confirmed", createdAt: new Date().toISOString() };
       db.bookings.push(b);
+      notify(db, a.artistId, `You're booked: ${l.venue}, ${when(l.date)}. Ref ${b.ref}.`, `/bookings/${b.id}`);
       return b.id;
     }),
     decline: (applicationId, promoterId) => write((db) => {
@@ -198,6 +279,8 @@ export function createLocalRepo(opts: Options = {}): Repo & { reset(): void } {
       if (a.status === "declined") return;
       if (a.status !== "pending") throw new RepoError("conflict", "That request is no longer pending.");
       a.status = "declined";
+      const dl = listing(db, a.listingId);
+      notify(db, a.artistId, `${user(db, dl.promoterId).name} declined your request for ${dl.venue}.`, `/slots/${dl.id}`);
     }),
   };
   return repo;

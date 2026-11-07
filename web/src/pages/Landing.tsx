@@ -1,17 +1,11 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { addDays, dayNum, monthShort, todayLondon, weekday } from "../domain/dates";
 import { useSession } from "../hooks";
 
 const when = (n: number) => { const d = addDays(todayLondon(), n); return `${weekday(d)} ${dayNum(d)} ${monthShort(d)}`; };
 
 export function Landing() {
-  const { user, signInAs, users } = useSession();
-  const nav = useNavigate();
-  const start = (role: "artist" | "promoter") => {
-    const u = users.find((x) => x.role === role);
-    if (u) signInAs(u.id);
-    nav(role === "artist" ? "/slots" : "/listings");
-  };
+  const { user } = useSession();
   return (
     <div className="landing">
       <section className="hero page">
@@ -20,10 +14,10 @@ export function Landing() {
           <h1>Find your next stage.</h1>
           <p className="lede">A support slot is the opening spot on someone else's bill. Promoters post the ones they have; artists apply with a few honest lines about their set; the promoter picks. That's all it does.</p>
           <div className="cta-row">
-            <button className="btn btn-primary btn-lg" onClick={() => start("artist")}>I'm an artist</button>
-            <button className="btn btn-lg" onClick={() => start("promoter")}>I'm a promoter</button>
+            <Link className="btn btn-primary btn-lg" to="/signup?role=artist">I'm an artist</Link>
+            <Link className="btn btn-lg" to="/signup?role=promoter">I'm a promoter</Link>
           </div>
-          <p className="small-note">{user ? <>You're looking around as {user.name}. <Link to={user.role === "artist" ? "/slots" : "/listings"}>Continue</Link>.</> : "This is a demo with sample data; no sign-up needed."}</p>
+          <p className="small-note">{user ? <>You're signed in as {user.name}. <Link to={user.role === "artist" ? "/slots" : "/listings"}>Continue</Link>.</> : <>Already a member? <Link to="/signin">Sign in</Link>, or <Link to="/signin">try a sample account</Link>.</>}</p>
         </div>
         <aside className="hero-ledger" aria-label="Example listings">
           <p className="ledger-title">On the board this week</p>
@@ -32,7 +26,7 @@ export function Landing() {
             <li><span className="l-date">{when(8)}</span><span className="l-what">Foundry Social, Leeds<small>Indie · set 19:40 · 30 min</small></span><span className="l-fee">£100</span></li>
             <li className="taken"><span className="l-date">{when(13)}</span><span className="l-what">Dial House, Sheffield<small>Rock · filled</small></span><span className="l-fee">£120</span></li>
           </ol>
-          <p className="ledger-note">Illustration only. Browse real sample slots once you pick a profile.</p>
+          <p className="ledger-note">Illustration only. Browse open slots once you've joined.</p>
         </aside>
       </section>
 

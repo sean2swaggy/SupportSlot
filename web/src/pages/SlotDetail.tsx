@@ -62,7 +62,7 @@ function Inner({ artistId }: { artistId: string }) {
             <Badge tone="pending">Request sent</Badge>
             <p className="prose">Your note: “{application.message}”</p>
             <p className="small-note">{slot.promoterName} will confirm one act. You'll see it under My gigs if it's you.</p>
-            <div className="actions"><Link className="btn" to="/bookings">Go to my gigs</Link><button className="btn btn-quiet" onClick={() => setWithdrawing(true)}>Withdraw request</button></div>
+            <div className="actions"><Link className="btn" to={`/messages/${slot.id}/${artistId}`}>Message the promoter</Link><Link className="btn btn-quiet" to="/bookings">My gigs</Link><button className="btn btn-quiet" onClick={() => setWithdrawing(true)}>Withdraw request</button></div>
           </div>
         ) : closed ? (
           <p className="prose">{slot.status === "booked" ? "This slot has been filled." : slot.status === "cancelled" ? "This listing was cancelled." : "This show date has passed."}</p>
