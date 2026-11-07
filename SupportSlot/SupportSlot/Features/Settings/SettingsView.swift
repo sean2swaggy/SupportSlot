@@ -18,7 +18,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 8) { Eyebrow("Account"); DisplayTitle("Settings", size: 32) }
 
                 section("Account") {
-                    Text("Signed in as \(store.accountIdentifier ?? "your account") (\(store.role.title.lowercased())).").dimBody(14)
+                    Text("Signed in as \(store.accountEmail ?? "your account") (\(store.role.title.lowercased())).").dimBody(14)
                     Button("Change password") { showPassword = true }.buttonStyle(.appOutline)
                 }
 

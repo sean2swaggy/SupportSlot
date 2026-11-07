@@ -57,22 +57,10 @@ final class AuthService: @unchecked Sendable {
         let pkce = PKCEPair.generate()
         let body = try JSONCoding.encoder.encode(Body(email: email, password: password, data: ["role": role], codeChallenge: pkce.challenge))
         let req = transport.request("POST", "/auth/v1/signup", query: QueryEncoding.queryString([("redirect_to", AppConfig.authCallbackURL)]), bearer: nil, body: body)
-        let outcome = try await finishSignUp(req)
-        PendingAuthFlowStore.save(PendingAuthFlow(kind: .signup, verifier: pkce.verifier, createdAt: Date()), key: flowKey)
-        return outcome
-    }
-
-    /// Signs up with a phone number (international format, e.g. +447700900123).
-    /// Supabase texts a 6-digit code; confirm it with `verifyPhoneCode`.
-    func signUp(phone: String, password: String, role: String) async throws -> SignUpOutcome {
-        struct Body: Encodable { let phone: String; let password: String; let data: [String: String] }
-        let body = try JSONCoding.encoder.encode(Body(phone: phone, password: password, data: ["role": role]))
-        return try await finishSignUp(transport.request("POST", "/auth/v1/signup", bearer: nil, body: body))
-    }
-
-    private func finishSignUp(_ req: URLRequest) async throws -> SignUpOutcome {
         let (data, http) = try await transport.send(req)
         guard (200..<300).contains(http.statusCode) else { throw Self.authError(data, status: http.statusCode) }
+        PendingAuthFlowStore.save(PendingAuthFlow(kind: .signup, verifier: pkce.verifier, createdAt: Date()), key: flowKey)
+
         if let token = try? JSONCoding.decoder.decode(TokenResponse.self, from: data) {
             let s = token.session
             store(s)
@@ -91,18 +79,6 @@ final class AuthService: @unchecked Sendable {
     func signIn(email: String, password: String) async throws -> AuthSession {
         struct Body: Encodable { let email: String; let password: String }
         let body = try JSONEncoder().encode(Body(email: email, password: password))
-        let req = transport.request("POST", "/auth/v1/token", query: "grant_type=password", bearer: nil, body: body)
-        let (data, http) = try await transport.send(req)
-        guard (200..<300).contains(http.statusCode) else { throw Self.authError(data, status: http.statusCode) }
-        let s = try JSONCoding.decoder.decode(TokenResponse.self, from: data).session
-        store(s)
-        return s
-    }
-
-    @discardableResult
-    func signIn(phone: String, password: String) async throws -> AuthSession {
-        struct Body: Encodable { let phone: String; let password: String }
-        let body = try JSONEncoder().encode(Body(phone: phone, password: password))
         let req = transport.request("POST", "/auth/v1/token", query: "grant_type=password", bearer: nil, body: body)
         let (data, http) = try await transport.send(req)
         guard (200..<300).contains(http.statusCode) else { throw Self.authError(data, status: http.statusCode) }
@@ -216,26 +192,6 @@ final class AuthService: @unchecked Sendable {
         return s
     }
 
-    /// Confirms a phone sign-up with the 6-digit code texted to the number, and signs the person in.
-    @discardableResult
-    func verifyPhoneCode(phone: String, code: String) async throws -> AuthSession {
-        struct Body: Encodable { let type = "sms"; let phone: String; let token: String }
-        let body = try JSONCoding.encoder.encode(Body(phone: phone, token: code))
-        let (data, http) = try await transport.send(transport.request("POST", "/auth/v1/verify", bearer: nil, body: body))
-        guard (200..<300).contains(http.statusCode) else { throw Self.authError(data, status: http.statusCode) }
-        let s = try JSONCoding.decoder.decode(TokenResponse.self, from: data).session
-        store(s)
-        return s
-    }
-
-    /// Texts a new code to a number that hasn't confirmed yet.
-    func resendPhoneCode(phone: String) async throws {
-        struct Body: Encodable { let type = "sms"; let phone: String }
-        let body = try JSONCoding.encoder.encode(Body(phone: phone))
-        let (data, http) = try await transport.send(transport.request("POST", "/auth/v1/resend", bearer: nil, body: body))
-        guard (200..<300).contains(http.statusCode) else { throw Self.authError(data, status: http.statusCode) }
-    }
-
     func updatePassword(_ newPassword: String) async throws {
         guard let token = try await validAccessToken() else { throw AppError.sessionExpired }
         struct Body: Encodable { let password: String }
@@ -312,10 +268,6 @@ final class AuthService: @unchecked Sendable {
         case "invalid_credentials": return "That email and password don't match."
         case "email_not_confirmed": return "Confirm your email first — enter the code we emailed you."
         case "user_already_exists", "email_exists": return "That email already has an account. Try logging in instead."
-        case "phone_not_confirmed": return "Confirm your number first — enter the code we texted you."
-        case "phone_exists": return "That number already has an account. Try logging in instead."
-        case "sms_send_failed": return "We couldn’t send a text to that number. Check it and try again."
-        case "phone_provider_disabled", "sms_provider_disabled": return "Signing up with a phone number isn’t switched on yet. Use your email instead."
         case "weak_password": return "That password is too weak. Use at least 8 characters with a mix of letters and numbers."
         case "over_request_rate_limit", "over_email_send_rate_limit", "over_sms_send_rate_limit": return "Too many attempts. Please wait a minute and try again."
         case "same_password": return "Choose a password you haven't used before."
@@ -325,7 +277,6 @@ final class AuthService: @unchecked Sendable {
         default: break
         }
         if t.contains("invalid login") { return "That email and password don't match." }
-        if t.contains("phone not confirmed") { return "Confirm your number first — enter the code we texted you." }
         if t.contains("not confirmed") { return "Confirm your email first — enter the code we emailed you." }
         if t.contains("already registered") { return "That email already has an account. Try logging in instead." }
         if t.contains("password") && (t.contains("short") || t.contains("weak") || t.contains("at least")) { return "That password is too weak. Use at least 8 characters with a mix of letters and numbers." }

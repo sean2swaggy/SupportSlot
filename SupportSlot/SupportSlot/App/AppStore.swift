@@ -104,17 +104,7 @@ final class AppStore {
     var userId: ID? { session?.user.id }
     var role: UserRole { (profile?.userRole ?? account.flatMap { UserRole(rawValue: $0.role) }) ?? .artist }
     var isSignedIn: Bool { session != nil }
-    var accountEmail: String? {
-        let e = session?.user.email ?? profile?.email
-        return (e?.isEmpty == false) ? e : nil
-    }
-    var hasEmail: Bool { accountEmail != nil }
-    /// What to show as "who you are": the email, or the phone number for a phone account.
-    var accountIdentifier: String? {
-        if let e = accountEmail { return e }
-        if let p = session?.user.phone, !p.isEmpty { return p.hasPrefix("+") ? p : "+" + p }
-        return nil
-    }
+    var accountEmail: String? { session?.user.email ?? profile?.email }
     var adminRole: String? { profile?.adminRole ?? account?.adminRole }
     var unreadNotificationCount: Int { notifications.filter { !$0.read }.count }
     var unreadThreadCount: Int { threads.filter(\.unread).count }

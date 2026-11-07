@@ -5,7 +5,7 @@ apply for support (opening-act) slots, and promoters post listings and choose
 an act.
 
 This repository is a **native iOS app** (SwiftUI, iOS 17+, no third-party
-packages) that talks straight to **Supabase** (Auth with email or mobile-number sign-up confirmed by a 6-digit code,
+packages) that talks straight to **Supabase** (Auth with email confirmation by 6-digit code,
 Postgres, row-level security, SQL functions). There is no server of our own; `web/` is a small
 sample-data web companion (see `web/README.md`) with no backend yet.
 
@@ -30,7 +30,7 @@ SupportSlot/                 Xcode project (SupportSlot.xcodeproj) and sources
   SupportSlot/Features/      Screens by area (Auth, Discover, Promoter, Staff…)
   SupportSlotTests/          XCTest unit tests (stubbed network)
   Config/                    Base.xcconfig, Secrets.example.xcconfig, Info.plist
-supabase/migrations/         0001–0008: schema, app functions, session security, UK locations, data export, function search paths, password-only sign-in, phone accounts
+supabase/migrations/         0001–0009: schema, app functions, session security, UK locations, data export, function search paths, password-only sign-in (0008/0009: a phone option added then removed again)
 supabase/sql-editor/         the same files, for pasting into the Supabase SQL editor
 tests/db/                    Postgres tests: real migrations in-process (PGlite)
 scripts/                     Live checks and demo-data scripts (Node)
@@ -40,8 +40,8 @@ docs/                        CURRENT_STATE.md and archived planning docs
 ## Set it up
 
 1. **Create a Supabase project** (a separate one for testing is wise).
-2. Dashboard → SQL Editor: run the eight files in `supabase/sql-editor/`
-   (`0001` through `0008`), one at a time, in order, once each, on an empty
+2. Dashboard → SQL Editor: run the nine files in `supabase/sql-editor/`
+   (`0001` through `0009`), one at a time, in order, once each, on an empty
    project (see `supabase/sql-editor/README.txt`). They are exact copies of
    `supabase/migrations/`. Future changes go in new numbered files.
 3. Dashboard → Authentication → URL Configuration: add the redirect URL

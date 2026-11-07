@@ -1,7 +1,7 @@
 # Support Slot — Current State (7 Nov 2026, branch `app/native-ios`)
 
 ## Live project
-Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 applied by hand in the SQL editor; 0006, 0007 and 0008 applied through the Supabase connection, on 7 Nov 2026). `SupportSlot/Config/Secrets.xcconfig` and `.env.local` point at it. The service-role key in `.env.local` is still the old project's, so the live scripts cannot run until it is replaced. `.env.local` also holds stale Stripe keys (unused; delete them). The test account created during setup was deleted again.
+Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 applied by hand in the SQL editor; 0006–0009 applied through the Supabase connection, on 7 Nov 2026). `SupportSlot/Config/Secrets.xcconfig` and `.env.local` point at it. The service-role key in `.env.local` is still the old project's, so the live scripts cannot run until it is replaced. `.env.local` also holds stale Stripe keys (unused; delete them). The test account created during setup was deleted again.
 
 ## Done this session
 - Migrations (run 0001→0005 in order, once each):
@@ -12,7 +12,7 @@ Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 app
 - Scripts rewritten for the new schema (`live-journey`, `security-regression`, `seed-dev-fixtures`, `lib/live.mjs`): **NOT RUN** (need the new service-role key).
 
 ## Verified (actual results, 7 Nov 2026)
-- `npm test`: 157 database tests passing (real migrations in PGlite).
+- `npm test`: 153 database tests passing (real migrations in PGlite).
 - Swift unit tests passing; app builds and launches in the iPhone 17 simulator against the live project.
 - Live project, anon key only: `london_today()` and `search_slots` answer (200, empty list); reading `profiles` anonymously is refused (401), as migration 0003 intends.
 - Web companion (`web/`): 20 tests, type-check and production build pass; `npm run app` runs a shared-data server (sign-up, booking, alerts, messages, restart persistence checked by hand).
@@ -37,5 +37,5 @@ No search-path warnings. Remaining warnings are expected: the app's own SECURITY
 ## Two-factor removed (7 Nov 2026)
 By the owner's decision there is no authenticator-app step. Migration `0007` removed the aal2 requirement from the policies and functions (it also renamed the policy to `active_session_required`); the iOS app no longer has the set-up/enter-code screens; the live-check scripts, demo-account script and the TOTP helper scripts were updated or removed. Accounts are protected by a password only. Two leftover SQL functions (`export_my_data`, `delete_my_account`) still raise the old `mfa_required` text if called by someone with no profile; harmless. If two-factor is ever wanted again, make it optional rather than mandatory.
 
-## Phone sign-up (added 7 Nov 2026)
-Sign-up and log-in offer **Email** or **Mobile number** (user's choice). Phone accounts are confirmed by a texted 6-digit code (`signUp(phone:)`, `verifyPhoneCode`, `resendPhoneCode`, `signIn(phone:)`, `PhoneRules.normalize`). Database: migration `0008`. Unit-tested (Swift and database). **Not working until a text provider is connected in Supabase**, see `docs/PHONE_SIGNUP.md`; never tested end to end against Supabase. Password reset by text is not built.
+## Phone sign-up: tried and removed (7 Nov 2026)
+A mobile-number option (texted code) was built and then removed by the owner's decision; sign-up is by email only. Migration `0008` added it to the database and `0009` undoes it (both were applied, so both stay in the history; run both, or neither, on a new project). Passwords are reset by email: "Forgot password?" on the log-in screen sends a reset link that opens the app (`supportslot://auth-callback`, PKCE), then the person chooses a new password. The reset email's template can be restyled in Supabase (Authentication → Emails → Templates → Reset password); it must keep `{{ .ConfirmationURL }}`.

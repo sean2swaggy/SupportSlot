@@ -22,31 +22,6 @@ enum EmailRules {
     }
 }
 
-enum PhoneRules {
-    /// Turns what someone typed into international format (+447700900123).
-    /// With no country code the number is taken to be UK (07700 900123 or 7700 900123).
-    /// Returns nil if it can't be a phone number.
-    static func normalize(_ input: String) -> String? {
-        // Only digits and the usual separators are allowed; anything else (letters, @, …) isn't a phone number.
-        guard input.allSatisfy({ $0.isNumber || " +-().".contains($0) }) else { return nil }
-        var s = input.filter { $0.isNumber || $0 == "+" }
-        guard !s.isEmpty else { return nil }
-        if s.hasPrefix("00") { s = "+" + s.dropFirst(2) }
-        if s.hasPrefix("+") {
-            var digits = String(s.dropFirst())
-            guard digits.allSatisfy(\.isNumber), (8...15).contains(digits.count) else { return nil }
-            if digits.hasPrefix("440") { digits = "44" + digits.dropFirst(3) } // "+44 (0)7700…" typed with the trunk 0
-            guard (8...15).contains(digits.count) else { return nil }
-            return "+" + digits
-        }
-        guard s.allSatisfy(\.isNumber) else { return nil }
-        if s.hasPrefix("44"), s.count == 12 { return "+" + s }          // 447700900123
-        if s.hasPrefix("0") { s = String(s.dropFirst()) }                // 07700900123
-        guard (9...10).contains(s.count) else { return nil }
-        return "+44" + s
-    }
-}
-
 struct PasswordStrength: Equatable {
     enum Label: String { case veryWeak = "Very weak", weak = "Weak", fair = "Fair", good = "Good", strong = "Strong" }
     let score: Int // 0...4

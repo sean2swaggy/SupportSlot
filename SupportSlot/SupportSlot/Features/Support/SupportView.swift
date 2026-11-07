@@ -19,7 +19,7 @@ struct SupportView: View {
                 if sent {
                     Eyebrow("Help", color: Theme.ok)
                     DisplayTitle("Request received", size: 28)
-                    Text(store.isSignedIn && store.hasEmail ? "We’ll reply to the email on your account." : "We’ll reply to \(email).").dimBody()
+                    Text(store.isSignedIn ? "We’ll reply to the email on your account." : "We’ll reply to \(email).").dimBody()
                     Button("Done") { dismiss() }.buttonStyle(.appPrimary)
                 } else {
                     Eyebrow("Help")
@@ -33,7 +33,7 @@ struct SupportView: View {
                                 .foregroundStyle(Theme.paper).fieldStyle()
                         }
                     }
-                    if !store.isSignedIn || !store.hasEmail {
+                    if !store.isSignedIn {
                         LabeledField(label: "Your email", hint: "So we can reply.") { TextField("you@email.com", text: $email).emailField().fieldStyle() }
                     }
                     LabeledField(label: "Message", hint: "\(message.count)/4000") { TextArea(text: $message, placeholder: "What happened?", minHeight: 140) }
@@ -52,9 +52,9 @@ struct SupportView: View {
     private func send() async {
         error = nil
         if message.trimmingCharacters(in: .whitespacesAndNewlines).count < 10 { error = "Please tell us a little more (at least 10 characters)."; return }
-        if !store.isSignedIn || !store.hasEmail, !EmailRules.isValid(email) { error = "Enter an email address we can reply to."; return }
+        if !store.isSignedIn, !EmailRules.isValid(email) { error = "Enter an email address we can reply to."; return }
         do {
-            try await store.db.submitSupportRequest(topic: topic, message: message, email: store.isSignedIn && store.hasEmail ? nil : email.trimmingCharacters(in: .whitespaces))
+            try await store.db.submitSupportRequest(topic: topic, message: message, email: store.isSignedIn ? nil : email.trimmingCharacters(in: .whitespaces))
             sent = true
         } catch { self.error = (error as? AppError)?.message ?? "We couldn’t send that. Please try again." }
     }

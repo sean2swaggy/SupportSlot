@@ -8,7 +8,7 @@ Read this before making changes. `README.md` has setup and the test commands;
 A UK marketplace connecting independent artists with promoters posting
 "support slot" (opening act) listings. A **native iOS app** (SwiftUI, iOS 17+,
 `@Observable`, no third-party packages) that talks directly to **Supabase**
-(Auth with email or mobile-number sign-up, each confirmed by a 6-digit code, and password-only sign-in, Postgres + RLS, SQL functions). There is no
+(Auth with email confirmation by 6-digit code and password-only sign-in, Postgres + RLS, SQL functions). There is no
 server of our own; `web/` is a sample-data web companion (Vite + React, see
 `web/README.md`) not yet wired to Supabase. **No money passes through the platform** —
 the promoter pays the artist directly; there is no payment provider, fee or
@@ -44,8 +44,8 @@ Both test suites and a clean `build` must pass before calling anything done.
    signed-in, non-suspended account on every table, migration 0007); the app's
    `AppStore` phase order (needsConfig → signedOut → onboarding → suspended →
    ready) gates what is shown. Sign-in is **password-only**: there is no
-   two-factor step (removed on request in 0007). Email or mobile number is confirmed with a
-   6-digit code typed into the app (see docs/PHONE_SIGNUP.md); a phone account has no email. Anyone with the password has the account.
+   two-factor step (removed on request in 0007). Email is confirmed with a
+   6-digit code typed into the app. Anyone with the password has the account.
 5. **Schema/code drift fails a test.** `tests/db/swift-contract.test.ts` reads
    the Swift sources and checks every column list (`static let …Columns` under a
    `// table: x` tag, `Query("table", …)`), filter, embed relationship, write
