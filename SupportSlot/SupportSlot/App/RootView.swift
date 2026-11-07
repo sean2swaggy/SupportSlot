@@ -14,7 +14,7 @@ struct RootView: View {
             switch store.phase {
             case .needsConfig: SetupRequiredView()
             case .launching: SplashView()
-            case .signedOut: VisitorShell()
+            case .signedOut: SignedOutFlow()
             case .onboarding: OnboardingView()
             case .mfaSetup: MFASetupView()
             case .mfaChallenge: MFAChallengeView()

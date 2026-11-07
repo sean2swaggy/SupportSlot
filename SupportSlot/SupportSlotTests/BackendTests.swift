@@ -119,6 +119,41 @@ final class AuthServiceTests: XCTestCase {
         XCTAssertEqual(req.value(forHTTPHeaderField: "apikey"), TestSupport.config.anonKey)
     }
 
+    func testEmailCodeConfirmsTheAccountAndSignsIn() async throws {
+        StubURLProtocol.reset { _ in .json(TestSupport.tokenJSON()) }
+        let auth = makeAuth()
+        let s = try await auth.verifyEmailCode(email: "a@example.com", code: "123456")
+        XCTAssertEqual(s.user.id, "user-1")
+        XCTAssertNotNil(auth.session)
+        XCTAssertNotNil(Keychain.get(key))
+        let req = StubURLProtocol.recorded[0]
+        XCTAssertEqual(req.url?.path, "/auth/v1/verify")
+        XCTAssertEqual(req.httpMethod, "POST")
+        let body = String(data: req.httpBody ?? Data(), encoding: .utf8) ?? ""
+        XCTAssertTrue(body.contains("\"type\":\"signup\""))
+        XCTAssertTrue(body.contains("\"token\":\"123456\""))
+        XCTAssertTrue(body.contains("a@example.com"))
+    }
+
+    func testWrongOrExpiredEmailCodeGivesAPlainMessageAndNoSession() async {
+        StubURLProtocol.reset { _ in .json(["code": 403, "error_code": "otp_expired", "msg": "Token has expired or is invalid"], status: 403) }
+        let auth = makeAuth()
+        do { _ = try await auth.verifyEmailCode(email: "a@example.com", code: "000000"); XCTFail("should throw") }
+        catch {
+            XCTAssertEqual((error as? AppError)?.message, "That code has expired or isn’t right. Request a new one.")
+            XCTAssertNil(auth.session)
+        }
+    }
+
+    func testUnconfirmedLoginTellsThemToEnterTheCode() async {
+        StubURLProtocol.reset { _ in .json(["code": 400, "error_code": "email_not_confirmed", "msg": "Email not confirmed"], status: 400) }
+        do { _ = try await makeAuth().signIn(email: "a@example.com", password: "pw-123456"); XCTFail("should throw") }
+        catch {
+            XCTAssertEqual((error as? AppError)?.code, "email_not_confirmed")
+            XCTAssertEqual((error as? AppError)?.message, "Confirm your email first — enter the code we emailed you.")
+        }
+    }
+
     func testBadPasswordGivesAPlainMessage() async {
         StubURLProtocol.reset { _ in .json(["code": 400, "error_code": "invalid_credentials", "msg": "Invalid login credentials"], status: 400) }
         do { _ = try await makeAuth().signIn(email: "a@example.com", password: "x"); XCTFail("should throw") }

@@ -176,6 +176,22 @@ final class AuthService: @unchecked Sendable {
         PendingAuthFlowStore.save(PendingAuthFlow(kind: .signup, verifier: pkce.verifier, createdAt: Date()), key: flowKey)
     }
 
+    /// Confirms a new account with the 6-digit code from the sign-up email, and
+    /// signs the person in. The code is typed into the app, so it works whichever
+    /// device the email was opened on. (The Supabase "Confirm signup" email must
+    /// include `{{ .Token }}` for the code to be in it; see docs/EMAIL_TEMPLATES.md.)
+    @discardableResult
+    func verifyEmailCode(email: String, code: String) async throws -> AuthSession {
+        struct Body: Encodable { let type = "signup"; let email: String; let token: String }
+        let body = try JSONCoding.encoder.encode(Body(email: email, token: code))
+        let (data, http) = try await transport.send(transport.request("POST", "/auth/v1/verify", bearer: nil, body: body))
+        guard (200..<300).contains(http.statusCode) else { throw Self.authError(data, status: http.statusCode) }
+        let s = try JSONCoding.decoder.decode(TokenResponse.self, from: data).session
+        PendingAuthFlowStore.clear(key: flowKey) // the link in the same email is now spent
+        store(s)
+        return s
+    }
+
     func updatePassword(_ newPassword: String) async throws {
         guard let token = try await validAccessToken() else { throw AppError.sessionExpired }
         struct Body: Encodable { let password: String }
@@ -293,18 +309,18 @@ final class AuthService: @unchecked Sendable {
         }
         switch code {
         case "invalid_credentials": return "That email and password don't match."
-        case "email_not_confirmed": return "Confirm your email first — we sent you a link when you signed up."
+        case "email_not_confirmed": return "Confirm your email first — enter the code we emailed you."
         case "user_already_exists", "email_exists": return "That email already has an account. Try logging in instead."
         case "weak_password": return "That password is too weak. Use at least 8 characters with a mix of letters and numbers."
         case "over_request_rate_limit", "over_email_send_rate_limit", "over_sms_send_rate_limit": return "Too many attempts. Please wait a minute and try again."
         case "same_password": return "Choose a password you haven't used before."
-        case "otp_expired", "flow_state_expired": return "That link has expired. Request a new one."
+        case "otp_expired", "flow_state_expired": return "That code has expired or isn’t right. Request a new one."
         case "user_banned": return "This account is suspended. Contact support if you think that's a mistake."
         case "signup_disabled": return "Sign-up is turned off for this project."
         default: break
         }
         if t.contains("invalid login") { return "That email and password don't match." }
-        if t.contains("not confirmed") { return "Confirm your email first — we sent you a link when you signed up." }
+        if t.contains("not confirmed") { return "Confirm your email first — enter the code we emailed you." }
         if t.contains("already registered") { return "That email already has an account. Try logging in instead." }
         if t.contains("password") && (t.contains("short") || t.contains("weak") || t.contains("at least")) { return "That password is too weak. Use at least 8 characters with a mix of letters and numbers." }
         if t.contains("rate limit") || status == 429 { return "Too many attempts. Please wait a minute and try again." }

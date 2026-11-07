@@ -24,5 +24,9 @@ Connected to Supabase project `bctbiiukydckunfsqjxv` (migrations 0001–0005 app
 - Unresolved retention decisions (deletion): shared conversations are deleted for both sides; booking snapshots keep names; support requests keep email/message; audit rows kept with actor cleared.
 - Legal text unreviewed; no signing/TestFlight; accessibility audit pending; server cannot prove coordinates are inside UK borders.
 
+## Welcome flow and email codes (added 7 Nov 2026)
+- Signed-out users now land on a welcome screen (create account / log in / browse) instead of the visitor home.
+- Sign-up is confirmed with a 6-digit code typed into the app (`AuthService.verifyEmailCode`), with the link kept as a fallback; logging in with an unconfirmed email goes to the code screen and sends a fresh code. Needs the email template in `docs/EMAIL_TEMPLATES.md` to be set up in Supabase. Unit-tested; not yet tested end to end against the live project.
+
 ## Web companion
 `web/` (Vite + React + a small Node server) is a separate, sample-data-backed web app for the same product. It does not talk to Supabase or the iOS app. See `web/README.md`.
