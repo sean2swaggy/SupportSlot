@@ -104,7 +104,7 @@ enum SafeLink {
 
 struct PlatformLink: Equatable, Identifiable {
     enum Platform: String, CaseIterable {
-        case spotify, soundcloud, bandcamp, youtube, instagram, tiktok, website
+        case spotify, soundcloud, bandcamp, youtube, instagram, tiktok
         var label: String {
             switch self {
             case .spotify: return "Spotify"
@@ -113,7 +113,6 @@ struct PlatformLink: Equatable, Identifiable {
             case .youtube: return "YouTube"
             case .instagram: return "Instagram"
             case .tiktok: return "TikTok"
-            case .website: return "Website"
             }
         }
         var isListening: Bool { [.spotify, .soundcloud, .bandcamp, .youtube].contains(self) }
@@ -125,13 +124,13 @@ struct PlatformLink: Equatable, Identifiable {
 }
 
 struct ArtistLinks: Equatable {
-    var spotify = "", soundcloud = "", bandcamp = "", youtube = "", instagram = "", tiktok = "", website = ""
+    var spotify = "", soundcloud = "", bandcamp = "", youtube = "", instagram = "", tiktok = ""
 
     init() {}
     init(artist: Artist) {
         spotify = artist.spotifyUrl; instagram = artist.instagramUrl; tiktok = artist.tiktokUrl
         soundcloud = artist.soundcloudUrl ?? ""; bandcamp = artist.bandcampUrl ?? ""
-        youtube = artist.youtubeUrl ?? ""; website = artist.websiteUrl ?? ""
+        youtube = artist.youtubeUrl ?? ""
     }
 
     func value(_ p: PlatformLink.Platform) -> String {
@@ -142,7 +141,6 @@ struct ArtistLinks: Equatable {
         case .youtube: return youtube
         case .instagram: return instagram
         case .tiktok: return tiktok
-        case .website: return website
         }
     }
 
@@ -154,7 +152,6 @@ struct ArtistLinks: Equatable {
         case .youtube: youtube = v
         case .instagram: instagram = v
         case .tiktok: tiktok = v
-        case .website: website = v
         }
     }
 

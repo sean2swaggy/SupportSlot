@@ -311,7 +311,6 @@ private struct LinksEditor: View {
         case .youtube: return "https://youtube.com/@…"
         case .soundcloud: return "https://soundcloud.com/…"
         case .bandcamp: return "https://….bandcamp.com"
-        case .website: return "https://…"
         }
     }
 

@@ -30,7 +30,6 @@ extension Database {
             "soundcloud_url": blank(links.soundcloud),
             "bandcamp_url": blank(links.bandcamp),
             "youtube_url": blank(links.youtube),
-            "website_url": blank(links.website),
         ] as Patch)
         if rows.isEmpty { throw AppError("Your links couldn’t be saved.") }
     }
