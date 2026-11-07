@@ -89,6 +89,27 @@ final class ErrorMapperTests: XCTestCase {
     }
 }
 
+final class PhoneRulesTests: XCTestCase {
+    func testUKNumbersBecomeInternational() {
+        XCTAssertEqual(PhoneRules.normalize("07700 900123"), "+447700900123")
+        XCTAssertEqual(PhoneRules.normalize("7700900123"), "+447700900123")
+        XCTAssertEqual(PhoneRules.normalize("+44 7700 900123"), "+447700900123")
+        XCTAssertEqual(PhoneRules.normalize("+44 (0) 7700 900123"), "+447700900123")
+        XCTAssertEqual(PhoneRules.normalize("0044 7700 900123"), "+447700900123")
+        XCTAssertEqual(PhoneRules.normalize("447700900123"), "+447700900123")
+        XCTAssertEqual(PhoneRules.normalize("(07700) 900-123"), "+447700900123")
+    }
+    func testOtherCountriesNeedAPlus() {
+        XCTAssertEqual(PhoneRules.normalize("+353 85 123 4567"), "+353851234567")
+        XCTAssertEqual(PhoneRules.normalize("+1 415 555 0132"), "+14155550132")
+    }
+    func testRejectsThingsThatCannotBeNumbers() {
+        for bad in ["", "abc", "123", "07700", "+44", "+4477009001234567890", "0770090012345678", "hello 07700 900123"] {
+            XCTAssertNil(PhoneRules.normalize(bad), bad)
+        }
+    }
+}
+
 final class JWTTests: XCTestCase {
     func testReadsAClaimFromAToken() {
         XCTAssertEqual(JWT.claim("aal", in: TestSupport.token(aal: "aal1")), "aal1")
@@ -148,6 +169,62 @@ final class AuthServiceTests: XCTestCase {
         catch {
             XCTAssertEqual((error as? AppError)?.code, "email_not_confirmed")
             XCTAssertEqual((error as? AppError)?.message, "Confirm your email first — enter the code we emailed you.")
+        }
+    }
+
+    func testPhoneSignUpSendsThePhoneAndRoleAndAsksForTheTextCode() async throws {
+        StubURLProtocol.reset { _ in .json(["id": "u1", "phone": "447700900123", "identities": [["id": "i1"]]]) }
+        let outcome = try await makeAuth().signUp(phone: "+447700900123", password: "pw-123456", role: "promoter")
+        XCTAssertEqual(outcome, .confirmationRequired)
+        let req = StubURLProtocol.recorded[0]
+        XCTAssertEqual(req.url?.path, "/auth/v1/signup")
+        let body = String(data: req.httpBody ?? Data(), encoding: .utf8) ?? ""
+        XCTAssertTrue(body.contains("\"phone\":\"+447700900123\""))
+        XCTAssertTrue(body.contains("\"role\":\"promoter\""))
+        XCTAssertFalse(body.contains("email"))
+    }
+
+    func testPhoneCodeConfirmsTheNumberAndSignsIn() async throws {
+        StubURLProtocol.reset { _ in .json(TestSupport.tokenJSON()) }
+        let auth = makeAuth()
+        let s = try await auth.verifyPhoneCode(phone: "+447700900123", code: "123456")
+        XCTAssertEqual(s.user.id, "user-1")
+        XCTAssertNotNil(auth.session)
+        let req = StubURLProtocol.recorded[0]
+        XCTAssertEqual(req.url?.path, "/auth/v1/verify")
+        let body = String(data: req.httpBody ?? Data(), encoding: .utf8) ?? ""
+        XCTAssertTrue(body.contains("\"type\":\"sms\""))
+        XCTAssertTrue(body.contains("\"token\":\"123456\""))
+        XCTAssertTrue(body.contains("+447700900123"))
+    }
+
+    func testPhoneSignInUsesThePhoneAndPassword() async throws {
+        StubURLProtocol.reset { _ in .json(TestSupport.tokenJSON()) }
+        try await makeAuth().signIn(phone: "+447700900123", password: "pw-123456")
+        let req = StubURLProtocol.recorded[0]
+        XCTAssertTrue(req.url?.query?.contains("grant_type=password") ?? false)
+        let body = String(data: req.httpBody ?? Data(), encoding: .utf8) ?? ""
+        XCTAssertTrue(body.contains("\"phone\":\"+447700900123\""))
+    }
+
+    func testResendingATextCodeAsksForAnSmsResend() async throws {
+        StubURLProtocol.reset { _ in .json([:]) }
+        try await makeAuth().resendPhoneCode(phone: "+447700900123")
+        let req = StubURLProtocol.recorded[0]
+        XCTAssertEqual(req.url?.path, "/auth/v1/resend")
+        XCTAssertTrue((String(data: req.httpBody ?? Data(), encoding: .utf8) ?? "").contains("\"type\":\"sms\""))
+    }
+
+    func testPhoneProblemsGetPlainMessages() async {
+        let cases: [(String, String)] = [
+            ("phone_not_confirmed", "Confirm your number first — enter the code we texted you."),
+            ("sms_send_failed", "We couldn’t send a text to that number. Check it and try again."),
+            ("phone_exists", "That number already has an account. Try logging in instead."),
+        ]
+        for (code, message) in cases {
+            StubURLProtocol.reset { _ in .json(["code": 400, "error_code": code, "msg": "x"], status: 400) }
+            do { _ = try await makeAuth().signIn(phone: "+447700900123", password: "pw"); XCTFail("should throw") }
+            catch { XCTAssertEqual((error as? AppError)?.message, message, code) }
         }
     }
 

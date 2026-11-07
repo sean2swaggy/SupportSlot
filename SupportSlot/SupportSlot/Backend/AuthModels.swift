@@ -14,6 +14,7 @@ struct AuthUserMetadata: Codable, Equatable { let role: String? }
 struct AuthUser: Codable, Equatable {
     let id: String
     let email: String?
+    var phone: String?
     let emailConfirmedAt: Date?
     let factors: [AuthFactor]?
     let identities: [AuthIdentity]?

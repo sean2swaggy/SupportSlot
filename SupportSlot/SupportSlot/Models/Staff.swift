@@ -28,7 +28,7 @@ struct StaffSupportRequest: Decodable, Identifiable, Equatable {
 struct StaffUser: Decodable, Identifiable, Equatable {
     let id: ID
     let role: String
-    let email: String
+    let email: String?   // nil for a phone-number account
     let username: String?
     let createdAt: Date
     let hasOnboarded: Bool

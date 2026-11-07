@@ -8,6 +8,7 @@ empty project. Wait for "Success. No rows returned" before the next one.
   5. 0005_account_data_and_messages.sql
   6. 0006_pin_function_search_path.sql    (small; added after the first five)
   7. 0007_remove_two_factor_requirement.sql   (small: password-only sign-in)
+  8. 0008_phone_accounts.sql                  (small: sign-up with a mobile number)
 
 Each file runs once. If one fails, copy the red error text and the file name; do not
 re-run the files before it. These are byte-for-byte copies of ../migrations/ (a test

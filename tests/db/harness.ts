@@ -24,6 +24,7 @@ const SUPABASE_STUBS = `
   create table auth.users (
     id uuid primary key default gen_random_uuid(),
     email text,
+    phone text,
     raw_user_meta_data jsonb not null default '{}',
     email_confirmed_at timestamptz
   );
@@ -113,14 +114,15 @@ let counter = 0;
 export async function signUp(
   db: Db,
   role: "artist" | "promoter",
-  opts: { email?: string } = {}
+  opts: { email?: string; phone?: string } = {}
 ): Promise<string> {
   counter += 1;
-  const email = opts.email ?? `${role}${counter}-${Math.random().toString(36).slice(2, 8)}@example.test`;
+  // A phone sign-up has a phone number and no email, like Supabase Auth creates it.
+  const email = opts.phone ? null : (opts.email ?? `${role}${counter}-${Math.random().toString(36).slice(2, 8)}@example.test`);
   const res = await db.query<{ id: string }>(
-    `insert into auth.users (email, raw_user_meta_data, email_confirmed_at)
-     values ($1, $2::jsonb, now()) returning id`,
-    [email, JSON.stringify({ role })]
+    `insert into auth.users (email, phone, raw_user_meta_data, email_confirmed_at)
+     values ($1, $2, $3::jsonb, now()) returning id`,
+    [email, opts.phone ?? null, JSON.stringify({ role })]
   );
   return res.rows[0].id;
 }

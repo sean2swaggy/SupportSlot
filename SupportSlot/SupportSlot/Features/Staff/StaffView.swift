@@ -152,7 +152,7 @@ private struct StaffUsersTab: View {
             if let error { Banner(kind: .error, text: error).padding(.horizontal, 20) }
             StaffList(load: { try await store.db.staffUsers(query: submitted) }, emptyText: "No users found.", reloadKey: submitted) { (u: StaffUser, reload: @escaping () async -> Void) in
                 StaffCard {
-                    HStack { Text(u.email).font(Theme.body(15, weight: .semibold)).foregroundStyle(Theme.paper); Spacer(); Tag(u.role); if u.adminRole != nil { Tag(u.adminRole!, tint: Theme.acid) } }
+                    HStack { Text(u.email ?? "Phone account").font(Theme.body(15, weight: .semibold)).foregroundStyle(Theme.paper); Spacer(); Tag(u.role); if u.adminRole != nil { Tag(u.adminRole!, tint: Theme.acid) } }
                     Text("@\(u.username ?? "—") · joined \(UKDates.timeAgo(u.createdAt))").font(Theme.body(12)).foregroundStyle(Theme.paperDim)
                     if let when = u.suspendedAt { Text("Suspended \(UKDates.timeAgo(when)): \(u.suspensionReason ?? "")").font(Theme.body(13)).foregroundStyle(Theme.signal) }
                     FlowLayout(spacing: 8) {

@@ -12,7 +12,7 @@ typealias ID = String
 struct Profile: Decodable, Equatable {
     let id: ID
     let role: String
-    let email: String
+    let email: String?   // nil for an account that signed up with a phone number
     let hasOnboarded: Bool
     let username: String?
     let suspendedAt: Date?
