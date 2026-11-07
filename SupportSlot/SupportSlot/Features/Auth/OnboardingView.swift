@@ -100,8 +100,9 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 18) {
             heading("Set up your account", "Choose a username, and confirm you’re at least \(Catalog.minimumAge).")
             LabeledField(label: "Username", error: usernameErrorText, hint: usernameStatus == .available ? nil : "3–20 letters, numbers or underscores.") {
-                TextField("e.g. slowcpu", text: $username)
+                TextField("", text: $username)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .accessibilityLabel("Username")
                     .fieldStyle(invalid: usernameErrorText != nil)
                     .onChange(of: username) { _, new in username = String(new.trimmingCharacters(in: .whitespaces).prefix(UsernameRules.maxLength)) }
                 if usernameStatus == .available { Text("That username is available.").font(Theme.body(13)).foregroundStyle(Theme.ok) }

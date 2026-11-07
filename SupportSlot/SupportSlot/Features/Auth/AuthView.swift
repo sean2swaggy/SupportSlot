@@ -204,7 +204,8 @@ struct AuthView: View {
         defer { verifying = false }
         do {
             try await store.auth.verifyEmailCode(email: address, code: digits)
-            // Signed in: the app moves on by itself.
+            // Signed in: say thank you, then the app moves on by itself.
+            store.showVerifiedThanks = true
         } catch {
             self.error = (error as? AppError)?.message ?? "That code didn’t work. Please try again."
             code = ""

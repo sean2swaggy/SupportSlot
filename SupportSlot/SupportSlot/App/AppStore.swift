@@ -60,6 +60,8 @@ final class AppStore {
     var notice: String?
     /// Set when the person arrived through a password-reset email link.
     var pendingPasswordReset = false
+    /// Set for a moment right after an email is confirmed, to show the thank-you screen.
+    var showVerifiedThanks = false
 
     private var refreshing = false
 
@@ -147,6 +149,7 @@ final class AppStore {
         savedSlotIDs = []; myListings = []
         loadError = nil; hasLoadedOnce = false
         pendingPasswordReset = false
+        showVerifiedThanks = false
     }
 
     func start() async {
@@ -313,7 +316,7 @@ final class AppStore {
         guard isConfigured else { return }
         switch await auth.handleCallback(url) {
         case .recovery: pendingPasswordReset = true
-        case .signedIn: notice = "You're signed in."
+        case .signedIn: showVerifiedThanks = true
         case .failed(let message): notice = message
         case .notAuthLink: break
         }

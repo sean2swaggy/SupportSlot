@@ -21,6 +21,12 @@ struct RootView: View {
             case .ready: MainShell()
             }
         }
+        .overlay {
+            if store.showVerifiedThanks {
+                VerifiedThanksView { withAnimation(.easeOut(duration: 0.3)) { store.showVerifiedThanks = false } }
+                    .transition(.opacity)
+            }
+        }
         .id(typeSize) // fonts are sized from Dynamic Type when a view is built; rebuild if the setting changes
         .dynamicTypeSize(...DynamicTypeSize.accessibility2) // the largest sizes stop being usable in dense rows
         .preferredColorScheme(.dark)
@@ -30,6 +36,9 @@ struct RootView: View {
         }
         .onOpenURL { url in Task { await store.handle(url: url) } }
         .task { await store.start() }
+        #if DEBUG
+        .task { if CommandLine.arguments.contains("-previewVerifiedThanks") { store.showVerifiedThanks = true } } // lets the screen be looked at without signing up
+        #endif
         .task(id: store.phase == .ready) {
             // Keep unread counts, applications and offers current without a manual refresh.
             guard store.phase == .ready else { return }
