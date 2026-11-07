@@ -1,305 +1,210 @@
 #!/usr/bin/env node
-// Support Slot — security regression checks.
+// Support Slot — live security regression checks (direct REST/RPC, no app).
 //
-// Runs real negative-test scenarios against the LIVE Supabase project
-// configured in .env.local (nothing
-// here charges a real card). Every account/row this script creates is
-// deleted again at the end, in a `finally` block, even on failure.
+// Negative tests that go straight at the Supabase API the way an attacker with
+// the public anon key and a normal account would — NOT through the app — using
+// real sessions that have completed the real second factor (aal2) unless a check
+// says otherwise. Everything created is removed in `finally`; no email is sent
+// (accounts come from the admin API).
 //
-// Usage:
-//   node scripts/security-regression.mjs
+//   LIVE_CONFIRM_PROJECT_REF=<ref> node scripts/security-regression.mjs
 //
-// This is deliberately NOT part of `npm test` — it needs real network
-// access to the configured Supabase project and takes a few seconds, which
-// doesn't belong in the fast unit-test loop `npm test` is for.
-//
-// Exit code is 0 only if every check passed.
+// Requires migrations 0001–0005. Exit code 0 only if every check passed.
+// STATUS: written against the new schema but NOT YET RUN (no live project yet).
+// The same rules are proved against the real migrations, in-process, by
+// tests/db/session-security.test.ts and friends; this script is the check that
+// the deployed project behaves the same.
 
-import fs from "fs";
-import { createClient } from "@supabase/supabase-js";
+import {
+  loadEnv, confirmTestProject, adminClient, anonClient, reachAal2, aalOf, rest, accessTokenOf, PLACES,
+} from "./lib/live.mjs";
 
-const env = fs.readFileSync(new URL("../.env.local", import.meta.url), "utf8");
-const get = (k) => {
-  const m = env.match(new RegExp(`^${k}=(.*)$`, "m"));
-  if (!m) throw new Error(`${k} not set in .env.local`);
-  return m[1].trim();
-};
-
-const SUPABASE_URL = get("NEXT_PUBLIC_SUPABASE_URL");
-const ANON_KEY = get("NEXT_PUBLIC_SUPABASE_ANON_KEY");
-const SERVICE_KEY = get("SUPABASE_SERVICE_ROLE_KEY");
-const APP_URL = process.env.APP_URL ?? "http://localhost:3000";
+const env = loadEnv();
+confirmTestProject(env, "This creates and then deletes synthetic accounts and rows");
+const admin = adminClient(env);
 const PASSWORD = "CorrectHorse9!Battery-Regression";
-
-// Dates relative to today so the checks don't rot (listings can't be in the past).
-const isoDaysFromNow = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
-
-const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
+const iso = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+const RUN = Math.random().toString(36).slice(2, 8);
 
 const results = [];
-const cleanupUserIds = [];
-const cleanupRows = []; // [{ table, id }]
-
-function record(name, pass, detail) {
-  results.push({ name, pass, detail });
+const userIds = [];
+const slotIds = [];
+const record = (name, pass, detail = "") => {
+  results.push({ name, pass });
   console.log(`${pass ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
-}
+};
 
-async function newUser(role, emailPrefix) {
-  const email = `${emailPrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
-  const client = createClient(SUPABASE_URL, ANON_KEY);
-  const { data, error } = await client.auth.signUp({
-    email,
-    password: PASSWORD,
-    options: { data: { role } },
-  });
-  if (error || !data.user) throw new Error(`signUp failed for ${email}: ${error?.message}`);
-  cleanupUserIds.push(data.user.id);
-  return { client, id: data.user.id, email };
+async function user(role, label, { place = PLACES.london, mfa = true } = {}) {
+  const email = `regress-${label}-${RUN}@example.com`;
+  const { data, error } = await admin.auth.admin.createUser({ email, password: PASSWORD, email_confirm: true, user_metadata: { role } });
+  if (error) throw new Error(`createUser ${label}: ${error.message}`);
+  const id = data.user.id;
+  userIds.push(id);
+  await admin.from("profiles").update({ has_onboarded: true }).eq("id", id);
+  if (role === "artist") {
+    await admin.from("artists").insert({ id, handle: `regress-${label}-${RUN}`, name: `Regress ${label}`, location: place.label, location_country: place.country, location_region: place.region, location_source: "search", genres: ["Indie"] });
+    await admin.from("artist_locations").insert({ artist_id: id, lat: Math.round(place.lat * 100) / 100, lon: Math.round(place.lon * 100) / 100 });
+  } else {
+    await admin.from("promoters").insert({ id, name: `Regress ${label}`, company: `Regress Co ${label}`, location: place.label, location_country: place.country, location_region: place.region, location_source: "search" });
+  }
+  const client = anonClient(env);
+  const si = await client.auth.signInWithPassword({ email, password: PASSWORD });
+  if (si.error) throw new Error(`sign in ${label}: ${si.error.message}`);
+  if (mfa) await reachAal2(client);
+  return { id, client, email };
 }
 
 async function main() {
-  // ---------------------------------------------------------------------
-  // Setup: two artists, two promoters, a venue, a slot, an application.
-  // ---------------------------------------------------------------------
-  const artistA = await newUser("artist", "regress-artist-a");
-  const artistB = await newUser("artist", "regress-artist-b");
-  const promoterA = await newUser("promoter", "regress-promoter-a");
-  const promoterB = await newUser("promoter", "regress-promoter-b");
-
-  await artistA.client.from("artists").insert({
-    id: artistA.id, handle: `regress-a-${artistA.id.slice(0, 8)}`, name: "Regress Artist A", location: "London",
-  });
-  await artistB.client.from("artists").insert({
-    id: artistB.id, handle: `regress-b-${artistB.id.slice(0, 8)}`, name: "Regress Artist B", location: "London",
-  });
-  await promoterA.client.from("promoters").insert({
-    id: promoterA.id, name: "Regress Promoter A", company: "Regress Co A", location: "London",
-  });
-  await promoterB.client.from("promoters").insert({
-    id: promoterB.id, name: "Regress Promoter B", company: "Regress Co B", location: "London",
-  });
-
+  const artistA = await user("artist", "artist-a");
+  const artistB = await user("artist", "artist-b", { place: PLACES.cardiff });
+  const promoterA = await user("promoter", "promoter-a");
+  const promoterB = await user("promoter", "promoter-b");
   const { data: venues } = await admin.from("venues").select("id").limit(1);
   const venueId = venues[0].id;
+  const { data: slotA, error: slotError } = await promoterA.client.from("slots").insert({
+    promoter_id: promoterA.id, venue_id: venueId, headliner: `Regress Slot ${RUN}`, date: iso(60), doors_time: "19:00", set_time: "20:00",
+    performance_length_mins: 30, expected_attendance: 100, support_fee: 50, application_deadline: iso(30), genres: ["Indie"],
+  }).select("id").single();
+  if (slotError) throw new Error(`could not create the test listing: ${slotError.message}`);
+  slotIds.push(slotA.id);
+  const { data: appA } = await artistA.client.from("applications").insert({ slot_id: slotA.id, artist_id: artistA.id, message: "regress" }).select("id").single();
 
-  const { data: slotA } = await promoterA.client
-    .from("slots")
-    .insert({
-      promoter_id: promoterA.id, venue_id: venueId, headliner: "Regress Slot A", city: "London",
-      date: isoDaysFromNow(60), doors_time: "19:00", set_time: "20:00", performance_length_mins: 30,
-      expected_attendance: 100, support_fee: 50, application_deadline: isoDaysFromNow(30),
-    })
-    .select("id")
-    .single();
-  cleanupRows.push({ table: "slots", id: slotA.id });
-
-  const { data: applicationA } = await artistA.client
-    .from("applications")
-    .insert({ slot_id: slotA.id, artist_id: artistA.id, message: "regress" })
-    .select("id")
-    .single();
-  cleanupRows.push({ table: "applications", id: applicationA.id });
-
-  // ---------------------------------------------------------------------
-  // 1. Unauthenticated access to a protected operation.
-  // ---------------------------------------------------------------------
+  // 1. Visitors
   {
-    const anon = createClient(SUPABASE_URL, ANON_KEY);
-    const { data, error } = await anon.from("applications").select("id").limit(1);
-    // applications has no public-select policy — an anonymous client must
-    // get zero rows back (RLS silently filters, it doesn't error).
-    record(
-      "Unauthenticated client cannot read applications",
-      !error && (data?.length ?? 0) === 0,
-      error ? error.message : `${data?.length ?? 0} rows returned`
-    );
-  }
-  {
-    const res = await fetch(`${APP_URL}/dashboard/artist`, { redirect: "manual" });
-    record(
-      "Unauthenticated request to a protected page is redirected, not served",
-      res.status >= 300 && res.status < 400,
-      `status ${res.status}`
-    );
+    const anon = anonClient(env);
+    for (const table of ["applications", "profiles", "messages", "bookings", "artist_locations", "artist_roster", "support_requests", "admin_audit_log"]) {
+      const { data, error } = await anon.from(table).select("*").limit(1);
+      record(`A visitor gets nothing from ${table}`, !!error || (data?.length ?? 0) === 0, error ? error.message : `${data.length} rows`);
+    }
+    const { error } = await anon.rpc("make_offer", { p_application_id: appA.id });
+    record("A visitor cannot call make_offer", !!error, error?.message);
+    const { error: e2 } = await anon.rpc("export_my_data");
+    record("A visitor cannot call export_my_data", !!e2, e2?.message);
+    const { error: e3 } = await anon.rpc("admin_recent_bookings", { p_limit: 5 });
+    record("A visitor cannot call admin functions", !!e3, e3?.message);
   }
 
-  // ---------------------------------------------------------------------
-  // 2. One artist reading/writing another artist's private data.
-  // ---------------------------------------------------------------------
+  // 2. Password-only session
   {
-    const { error } = await artistA.client
-      .from("artists")
-      .update({ bio: "hijacked by artist A" })
-      .eq("id", artistB.id);
-    const { data: check } = await admin.from("artists").select("bio").eq("id", artistB.id).single();
-    record(
-      "Artist A cannot overwrite artist B's profile row",
-      check?.bio !== "hijacked by artist A",
-      error ? error.message : "no error returned, but row unaffected (RLS filtered the WHERE)"
-    );
+    const half = await user("artist", "half", { mfa: false });
+    record("A password-only token is aal1", (await aalOf(half.client)) === "aal1");
+    const t = await accessTokenOf(half.client);
+    const calls = [
+      ["read own profile", rest(env, t, `profiles?id=eq.${half.id}&select=id`), (r) => r.status === 200 && r.body.length === 0],
+      ["read applications", rest(env, t, "applications?select=id"), (r) => r.status === 200 && r.body.length === 0],
+      ["read notifications", rest(env, t, "notifications?select=id"), (r) => r.status === 200 && r.body.length === 0],
+      ["insert an application", rest(env, t, "applications", { method: "POST", body: JSON.stringify({ slot_id: slotA.id, artist_id: half.id }) }), (r) => r.status >= 400],
+      ["call respond_to_offer", rest(env, t, "rpc/respond_to_offer", { method: "POST", body: JSON.stringify({ p_application_id: appA.id, p_accept: true }) }), (r) => r.status >= 400],
+      ["call export_my_data", rest(env, t, "rpc/export_my_data", { method: "POST", body: "{}" }), (r) => r.status >= 400],
+      ["call delete_my_account", rest(env, t, "rpc/delete_my_account", { method: "POST", body: "{}" }), (r) => r.status >= 400],
+      ["call set_my_location", rest(env, t, "rpc/set_my_location", { method: "POST", body: JSON.stringify({ p_label: "Leeds", p_country: "England", p_region: null, p_lat: 53.8, p_lon: -1.55, p_source: "search" }) }), (r) => r.status >= 400],
+    ];
+    for (const [what, p, ok] of calls) {
+      const r = await p;
+      record(`A password-only session cannot ${what}`, ok(r), `${r.status} ${JSON.stringify(r.body).slice(0, 70)}`);
+    }
+    const { error } = await half.client.auth.mfa.enroll({ factorType: "totp" });
+    record("…but it CAN enrol an authenticator (so setup is possible)", !error, error?.message);
   }
 
-  // ---------------------------------------------------------------------
-  // 3. One promoter reading another promoter's private applications.
-  // ---------------------------------------------------------------------
+  // 3. Cross-account access and ownership spoofing (aal2)
   {
-    const { data, error } = await promoterB.client
-      .from("applications")
-      .select("id")
-      .eq("id", applicationA.id);
-    record(
-      "Promoter B cannot see an application on promoter A's slot",
-      !error && (data?.length ?? 0) === 0,
-      error ? error.message : `${data?.length ?? 0} rows returned`
-    );
+    await artistA.client.from("artists").update({ bio: "hijacked" }).eq("id", artistB.id);
+    const { data } = await admin.from("artists").select("bio").eq("id", artistB.id).single();
+    record("Artist A cannot overwrite artist B's profile", data?.bio !== "hijacked");
+    const { data: seen } = await promoterB.client.from("applications").select("id").eq("id", appA.id);
+    record("Promoter B cannot see an application on promoter A's listing", (seen?.length ?? 0) === 0);
+    const { error: spoof } = await artistB.client.from("applications").insert({ slot_id: slotA.id, artist_id: artistA.id });
+    record("An artist cannot apply as someone else", !!spoof, spoof?.message);
+    const { error: asPromoter } = await artistA.client.from("slots").insert({ promoter_id: artistA.id, venue_id: venueId, headliner: "x", date: iso(30), doors_time: "19:00", set_time: "20:00", performance_length_mins: 30, expected_attendance: 10, support_fee: 1, application_deadline: iso(20), genres: ["Indie"] });
+    record("An artist cannot create a listing", !!asPromoter, asPromoter?.message);
+    const { data: coords } = await artistB.client.from("artist_locations").select("*").eq("artist_id", artistA.id);
+    record("Artist B cannot read artist A's private coordinates", (coords?.length ?? 0) === 0);
+    const { data: mine } = await artistA.client.from("artist_locations").select("lat, lon");
+    record("Artist A can read their own (rounded) coordinates", mine?.length === 1);
+    const { error: plant } = await artistA.client.from("artist_locations").insert({ artist_id: artistB.id, lat: 51, lon: -1 });
+    record("Nobody can write artist_locations directly", !!plant, plant?.message);
+    const { error: relabel } = await artistA.client.from("artists").update({ location: "Somewhere Else" }).eq("id", artistA.id);
+    record("An artist can't change the public location label without the picker function", !!relabel, relabel?.message);
+    const { error: viaFn } = await artistA.client.rpc("set_my_location", { p_label: "Leeds", p_country: "England", p_region: "West Yorkshire", p_lat: 53.801234, p_lon: -1.549123, p_source: "search" });
+    const { data: rounded } = await artistA.client.from("artist_locations").select("lat, lon").single();
+    record("set_my_location works and stores ~1 km-rounded coordinates", !viaFn && rounded?.lat === 53.8 && rounded?.lon === -1.55, `${viaFn?.message ?? ""} ${JSON.stringify(rounded)}`);
+    const { error: nz } = await artistA.client.rpc("set_my_location", { p_label: "Paris", p_country: "England", p_region: null, p_lat: 48.85, p_lon: 2.35, p_source: "search" });
+    record("A place outside the UK is refused", !!nz, nz?.message);
   }
 
-  // ---------------------------------------------------------------------
-  // 4. Role escalation / ownership-field tampering.
-  // ---------------------------------------------------------------------
+  // 4. Mass assignment / escalation
   {
-    const { error } = await promoterA.client.from("profiles").update({ role: "artist" }).eq("id", promoterA.id);
-    const { data: check } = await admin.from("profiles").select("role").eq("id", promoterA.id).single();
-    record(
-      "profiles.role cannot be changed after signup (prevent_role_change trigger)",
-      check?.role === "promoter",
-      error ? error.message : "no error returned, but role unchanged"
-    );
+    await promoterA.client.from("profiles").update({ role: "artist" }).eq("id", promoterA.id);
+    const { data: r } = await admin.from("profiles").select("role").eq("id", promoterA.id).single();
+    record("profiles.role cannot be changed", r?.role === "promoter");
+    for (const patch of [{ admin_role: "admin" }, { suspended_at: null }, { email: "x@example.com" }]) {
+      await artistA.client.from("profiles").update(patch).eq("id", artistA.id);
+    }
+    const { data: p } = await admin.from("profiles").select("admin_role, email").eq("id", artistA.id).single();
+    record("A user cannot grant themselves staff or change their stored email", p?.admin_role === null && p?.email === `regress-artist-a-${RUN}@example.com`);
+    await artistA.client.from("artists").update({ verification: "verified" }).eq("id", artistA.id);
+    const { data: v } = await admin.from("artists").select("verification").eq("id", artistA.id).single();
+    record("An artist cannot self-verify", v?.verification === "unverified");
+    await promoterA.client.from("promoters").update({ shows_posted: 9999 }).eq("id", promoterA.id);
+    const { data: sp } = await admin.from("promoters").select("shows_posted").eq("id", promoterA.id).single();
+    record("A promoter cannot inflate shows_posted", sp?.shows_posted !== 9999);
+    for (const forged of ["shortlisted", "offered", "confirmed", "cancelled"]) {
+      await artistA.client.from("applications").update({ status: forged }).eq("id", appA.id);
+    }
+    const { data: a } = await admin.from("applications").select("status").eq("id", appA.id).single();
+    record("An artist cannot set their own application status", a?.status === "submitted" || a?.status === "viewed", a?.status);
+    const { error: bk } = await promoterA.client.from("bookings").insert({ slot_id: slotA.id, artist_id: artistA.id, promoter_id: promoterA.id, status: "confirmed" });
+    record("A client cannot insert a booking directly", !!bk, bk?.message);
+    const { error: notif } = await admin.rpc("notify", { p_profile_id: artistA.id, p_type: "system", p_text: "Original", p_href: "/applications" }); // service role only
+    await artistA.client.from("notifications").update({ text: "Rewritten" }).eq("profile_id", artistA.id);
+    const { data: n } = await admin.from("notifications").select("text").eq("profile_id", artistA.id).eq("text", "Rewritten");
+    record("A user cannot rewrite their own notification text", !notif && (n?.length ?? 0) === 0, notif?.message);
+    const { error: internal } = await artistA.client.rpc("notify", { p_profile_id: artistB.id, p_type: "system", p_text: "forged", p_href: null });
+    record("Internal functions are not callable by clients (notify)", !!internal, internal?.message);
+    const { error: rl } = await artistA.client.rpc("rate_limit_hit", { p_key: "x", p_limit: 1, p_window_seconds: 60 });
+    record("The rate limiter is not callable by clients", !!rl, rl?.message);
   }
-  {
-    const { error } = await artistA.client
-      .from("artists")
-      .update({ verification: "verified" })
-      .eq("id", artistA.id);
-    const { data: check } = await admin
-      .from("artists")
-      .select("verification")
-      .eq("id", artistA.id)
-      .single();
-    record(
-      "Artist cannot self-set verification",
-      check?.verification === "unverified",
-      error ? error.message : "no error returned — fields were written by the client"
-    );
-  }
-  {
-    // Same migration — an artist should only ever be able to move their OWN
-    // application to 'cancelled', never self-shortlist.
-    const { error } = await artistA.client
-      .from("applications")
-      .update({ status: "shortlisted" })
-      .eq("id", applicationA.id);
-    const { data: check } = await admin.from("applications").select("status").eq("id", applicationA.id).single();
-    record(
-      "Artist cannot self-shortlist their own application (needs migration 0018)",
-      check?.status !== "shortlisted",
-      error ? error.message : "no error returned — status was written by the client"
-    );
-  }
-  for (const forged of ["offered", "confirmed", "cancelled"]) {
-    await artistA.client.from("applications").update({ status: forged }).eq("id", applicationA.id);
-    const { data: check } = await admin.from("applications").select("status").eq("id", applicationA.id).single();
-    record(
-      `Artist cannot self-set their application to '${forged}' (state changes go through SQL functions)`,
-      check?.status === "submitted" || check?.status === "viewed",
-      `status is '${check?.status}'`
-    );
-  }
-  {
-    // Inserting an application that is already confirmed used to be possible.
-    const { error } = await artistB.client
-      .from("applications")
-      .insert({ slot_id: slotA.id, artist_id: artistB.id, status: "confirmed" });
-    const { data: check } = await admin.from("applications").select("status").eq("slot_id", slotA.id).eq("artist_id", artistB.id);
-    if (check?.length) cleanupRows.push({ table: "applications", id: check[0].id });
-    record(
-      "Artist cannot INSERT an application that is already 'confirmed'",
-      !!error || (check?.length ?? 0) === 0 || check[0].status === "submitted",
-      error ? error.message : `row status: ${check?.[0]?.status ?? "none"}`
-    );
-  }
-  {
-    const { error } = await artistA.client.rpc("make_offer", { p_application_id: applicationA.id });
-    record("Artist cannot make an offer on a promoter's behalf", !!error, error?.message ?? "no error");
-  }
-  {
-    const { error } = await promoterB.client.rpc("make_offer", { p_application_id: applicationA.id });
-    record("Another promoter cannot make an offer on someone else's application", !!error, error?.message ?? "no error");
-  }
-  {
-    const { error } = await promoterB.client.rpc("close_slot", { p_slot_id: slotA.id });
-    const { data: check } = await admin.from("slots").select("status").eq("id", slotA.id).single();
-    record("Another promoter cannot close someone else's listing", !!error && check?.status === "open", error?.message ?? "no error");
-  }
-  {
-    await promoterB.client.from("slots").update({ headliner: "hijacked" }).eq("id", slotA.id);
-    const { data: check } = await admin.from("slots").select("headliner").eq("id", slotA.id).single();
-    record("Another promoter cannot edit someone else's listing", check?.headliner === "Regress Slot A", `headliner: ${check?.headliner}`);
-  }
-  {
-    // A booking can only come from make_offer; clients have no insert/update on bookings at all.
-    const { error } = await promoterA.client.from("bookings").insert({
-      slot_id: slotA.id, artist_id: artistA.id, promoter_id: promoterA.id, status: "confirmed",
-    });
-    record("A client cannot insert a booking row directly", !!error, error?.message ?? "no error — a booking was written by the client");
-  }
-  {
-    const { error } = await admin.rpc("rate_limit_hit", { p_key: "regress", p_limit: 1, p_window_seconds: 60 });
-    const { error: clientError } = await artistA.client.rpc("rate_limit_hit", { p_key: "regress", p_limit: 1, p_window_seconds: 60 });
-    record("The rate limiter is not callable by signed-in clients", !!clientError && !error, clientError?.message ?? "no error");
-  }
+
+  // 5. Staff boundaries
   {
     const { error } = await artistA.client.rpc("admin_suspend_user", { p_profile_id: artistB.id, p_reason: "regression test" });
-    record("A normal user cannot call staff actions", !!error, error?.message ?? "no error");
+    record("A normal user cannot call staff actions", !!error, error?.message);
     const { data } = await artistA.client.rpc("staff_find_users", { p_q: "", p_limit: 5 });
-    record("A normal user cannot read the staff user directory", !data || data.length === 0, `${data?.length ?? 0} rows`);
-  }
-  {
-    const anon = createClient(SUPABASE_URL, ANON_KEY);
-    const { error } = await anon.rpc("admin_recent_bookings", { p_limit: 5 });
-    record("A signed-out client cannot call the admin bookings list", !!error, error?.message ?? "no error");
+    record("A normal user cannot read the staff user directory", !data || data.length === 0);
+    const mod = await user("promoter", "mod");
+    await admin.from("profiles").update({ admin_role: "moderator" }).eq("id", mod.id);
+    const { error: noAdmin } = await mod.client.rpc("admin_recent_bookings", { p_limit: 5 });
+    record("A moderator cannot read the admin-only bookings list", !!noAdmin, noAdmin?.message);
+    const { error: noVerify } = await mod.client.rpc("admin_set_verification", { p_profile_id: artistA.id, p_verified: true });
+    record("A moderator cannot verify users", !!noVerify, noVerify?.message);
+    const { error: audit } = await mod.client.from("admin_audit_log").insert({ actor_role: "admin", action: "forged", target_type: "x" });
+    record("Staff cannot write the audit log directly", !!audit, audit?.message);
+    const before = (await admin.from("admin_audit_log").select("id", { count: "exact", head: true })).count;
+    await mod.client.rpc("admin_suspend_user", { p_profile_id: artistB.id, p_reason: "no" }); // reason too short: must fail and leave no audit row
+    const after = (await admin.from("admin_audit_log").select("id", { count: "exact", head: true })).count;
+    record("A failed staff action leaves no audit row", before === after, `${before} → ${after}`);
+    // Staff with a password-only session
+    const modHalf = await user("promoter", "mod-half", { mfa: false });
+    await admin.from("profiles").update({ admin_role: "admin" }).eq("id", modHalf.id);
+    const { error: aal1Staff } = await modHalf.client.rpc("staff_audit_log", { p_limit: 5 });
+    record("Staff powers need the second factor too", !!aal1Staff, aal1Staff?.message);
   }
 
-  // ---------------------------------------------------------------------
-  // 5. Server routes refuse requests with no session.
-  // ---------------------------------------------------------------------
-  {
-    for (const path of ["/api/account/delete", "/api/account/export", "/api/reports/bookings"]) {
-      const res = await fetch(`${APP_URL}${path}`, { method: path.endsWith("export") ? "GET" : "POST", redirect: "manual" });
-      record(`${path} requires a session`, res.status === 401, `status ${res.status}`);
-    }
-    const res = await fetch(`${APP_URL}/api/cron/send-emails`);
-    record("Cron endpoints refuse requests without the cron secret", res.status === 401 || res.status === 403 || res.status === 503, `status ${res.status}`);
-  }
-
-  // ---------------------------------------------------------------------
-  // 6. Malicious profile content (javascript: URL in a platform link).
-  // Covered by src/lib/artist-links.test.ts (`npm test`) instead of here —
-  // isSafeExternalUrl is a plain TS function with no live dependency, and
-  // this script's plain-Node runtime has no TS loader to import it with.
-  // ---------------------------------------------------------------------
-
-  // ---------------------------------------------------------------------
-  // Summary
-  // ---------------------------------------------------------------------
   const failed = results.filter((r) => !r.pass);
   console.log(`\n${results.length - failed.length}/${results.length} checks passed.`);
-  if (failed.length > 0) {
-    console.log("\nFailed:");
-    for (const f of failed) console.log(`  - ${f.name}`);
-  }
+  for (const f of failed) console.log(`  FAILED: ${f.name}`);
   return failed.length === 0;
 }
 
 async function cleanup() {
-  for (const { table, id } of cleanupRows.reverse()) {
-    await admin.from(table).delete().eq("id", id);
-  }
-  for (const id of cleanupUserIds) {
-    await admin.auth.admin.deleteUser(id);
+  try {
+    if (slotIds.length) await admin.from("bookings").delete().in("slot_id", slotIds);
+    await admin.from("slots").delete().in("id", slotIds);
+    await admin.from("admin_audit_log").delete().in("target_id", userIds);
+    for (const id of userIds) await admin.auth.admin.deleteUser(id);
+  } catch (e) {
+    console.error("cleanup problem (synthetic rows may remain):", e?.message ?? e);
   }
 }
 

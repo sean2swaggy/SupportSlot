@@ -5,21 +5,27 @@
 //   SEED_CONFIRM_PROJECT_REF=<project ref> node scripts/seed-dev-fixtures.mjs --reset
 //
 // - Refuses to run unless you type the project ref.
-// - Needs supabase/migrations/0001_initial_schema.sql applied (checks, and stops with a message).
+// - Needs migrations 0001–0005 applied (checks, and stops with a message).
 // - Idempotent: everything has a fixed id or is looked up first; re-running
 //   adds nothing twice and never overwrites edits you made in the app.
 // - Goes through the real SQL functions / RPCs as the real users, so the data
 //   is exactly what the app would have produced (offers, bookings, notifications).
-// - No real emails (demo accounts have email notifications off and use
-//   example.com addresses). The app handles no money, so there are no payments.
-// - Passwords and authenticator secrets go to .dev-fixtures/ (gitignored).
+// - No email is sent: accounts are created with the admin API (email_confirm), and
+//   the example.com addresses are a reserved domain with no mailboxes.
+// - Every demo user goes through the REAL second factor (TOTP enrol + verify), so
+//   all their calls carry an aal2 token, exactly like the app's. 2FA is not weakened.
+// - Passwords and authenticator secrets go to .dev-fixtures/ (gitignored). Never commit them.
+// - UK-wide: demo people and venues in England, Scotland, Wales and Northern Ireland,
+//   including a small town, a place with no county, three different "Newport"s and a
+//   typed-in venue with no map position.
 
 import fs from "fs";
-import { PEOPLE, SLOTS, THREADS, SAVED, REPORT, DOMAIN, imageFor } from "./lib/fixture-data.mjs";
+import { PEOPLE, SLOTS, THREADS, SAVED, REPORT, DOMAIN, FIXTURE_VENUES, imageFor } from "./lib/fixture-data.mjs";
 import {
   loadEnv, guard, fixtureId, londonDate, readAccounts, writeAccounts, newPassword,
-  adminClient, anonClient, must, FIXTURE_DIR,
+  adminClient, anonClient, must, FIXTURE_DIR, venueFixtureId,
 } from "./lib/fixture-helpers.mjs";
+import { reachAal2 } from "./lib/live.mjs";
 import { totp } from "./lib/totp.mjs";
 
 const env = loadEnv();
@@ -35,8 +41,10 @@ const ids = {}; // person key -> auth user id
 async function preflight() {
   const b = await admin.from("bookings").select("id").limit(1);
   const s = await admin.rpc("search_slots", {});
-  if (b.error || (s.error && /could not find|does not exist|schema cache/i.test(s.error.message))) {
-    console.error("The schema isn't applied to this project (bookings / search_slots missing). Run supabase/migrations/0001_initial_schema.sql in the SQL editor first.");
+  const l = await admin.from("artist_locations").select("artist_id").limit(1);
+  const f = await admin.rpc("terms_preview", { p_slot_id: "00000000-0000-0000-0000-000000000000" });
+  if (b.error || l.error || (s.error && /could not find|does not exist|schema cache/i.test(s.error.message)) || (f.error && /could not find|schema cache/i.test(f.error.message))) {
+    console.error("The schema isn't fully applied to this project (needs migrations 0001, 0002, 0003, 0004, 0005 in order). See docs/SETUP.md.");
     process.exit(1);
   }
 }
@@ -82,6 +90,7 @@ async function ensureUser(p) {
 }
 
 const clients = {};
+/** A signed-in client for this person, upgraded to aal2 through the real second factor. */
 async function as(key) {
   if (clients[key]) return clients[key];
   const p = byKey[key];
@@ -94,6 +103,16 @@ async function as(key) {
     if (error) throw new Error(`sign in as ${p.email}: ${error.message}`);
     log(`  ~ restored the recorded password for ${p.email}`);
   }
+  const creds = accounts[p.email];
+  const { data: fac } = await admin.auth.admin.mfa.listFactors({ userId: ids[key] });
+  const verified = (fac?.factors ?? []).some((f) => f.factor_type === "totp" && f.status === "verified");
+  if (verified && !creds.totpSecret) {
+    // A factor exists but we don't hold its secret: remove it and enrol afresh (fixture accounts only).
+    for (const f of fac.factors) await admin.auth.admin.mfa.deleteFactor({ id: f.id, userId: ids[key] });
+  }
+  const hadSecret = verified && creds.totpSecret;
+  const secret = await reachAal2(c, hadSecret ? creds.totpSecret : undefined);
+  if (!hadSecret) { creds.totpSecret = secret; writeAccounts(accounts); log(`  + authenticator enrolled for ${p.email}`); }
   clients[key] = c;
   return c;
 }
@@ -112,7 +131,8 @@ async function ensureProfiles(p) {
     const a = p.artist;
     const imgs = imageFor(p.key);
     must(await admin.from("artists").upsert({
-      id, handle: a.handle, name: a.name, location: a.location, genres: a.genres, artist_size: a.artist_size,
+      id, handle: a.handle, name: a.name, location: a.place.label, location_country: a.place.country, location_region: a.place.region,
+      location_source: a.typedIn ? "manual" : "search", genres: a.genres, artist_size: a.artist_size,
       travel_radius_miles: a.travel_radius_miles, monthly_listeners: a.monthly_listeners,
       availability: a.availability, last_minute_alerts: a.last_minute_alerts, bio: a.bio,
       image_url: imgs.avatar, banner_image_url: imgs.banner,
@@ -120,6 +140,8 @@ async function ensureProfiles(p) {
       soundcloud_url: `https://example.com/demo/${a.handle}/soundcloud`, youtube_url: `https://example.com/demo/${a.handle}/youtube`,
       live_video_url: `https://example.com/demo/${a.handle}/live`, live_video_thumbnail_url: imgs.banner,
     }, { onConflict: "id", ignoreDuplicates: true }), `artist ${a.name}`);
+    // Private position, rounded to ~1 km exactly as set_my_location stores it.
+    must(await admin.from("artist_locations").upsert({ artist_id: id, lat: Math.round(a.place.lat * 100) / 100, lon: Math.round(a.place.lon * 100) / 100 }, { onConflict: "artist_id", ignoreDuplicates: true }), "artist location");
     const t = must(await admin.from("artist_tracks").select("id").eq("artist_id", id).limit(1), "tracks");
     if (t.length === 0) {
       must(await admin.from("artist_tracks").insert(a.tracks.map((x, i) => ({ artist_id: id, title: x.title, duration: x.duration, url: x.url, sort_order: i }))), "insert tracks");
@@ -131,7 +153,22 @@ async function ensureProfiles(p) {
   }
   if (p.promoter) {
     const imgs = imageFor(p.key);
-    must(await admin.from("promoters").upsert({ id, ...p.promoter, avatar_url: imgs.avatar }, { onConflict: "id", ignoreDuplicates: true }), `promoter ${p.promoter.company}`);
+    const { name, company, place } = p.promoter;
+    must(await admin.from("promoters").upsert({
+      id, name, company, location: place.label, location_country: place.country, location_region: place.region, location_source: "search", avatar_url: imgs.avatar,
+    }, { onConflict: "id", ignoreDuplicates: true }), `promoter ${company}`);
+  }
+}
+
+// ----------------------------------------------------------------- venues
+async function seedVenues() {
+  for (const v of FIXTURE_VENUES) {
+    const id = venueFixtureId(v.key);
+    must(await admin.from("venues").upsert({
+      id, name: v.name, city: v.place.label, capacity: v.capacity, address: v.address, verification: "unverified",
+      country: v.place.country, region: v.place.region, lat: v.typedIn ? null : v.place.lat, lon: v.typedIn ? null : v.place.lon,
+      location_source: v.typedIn ? "manual" : "search", created_by: ids[v.owner],
+    }, { onConflict: "id", ignoreDuplicates: true }), `venue ${v.key}`);
   }
 }
 
@@ -148,9 +185,8 @@ async function seedSlots() {
     const fresh = !have.has(slotId);
     if (!fresh) log(`  = listing ${s.n} "${s.headliner}" already there`);
     if (fresh) must(await admin.from("slots").insert({
-      id: slotId, promoter_id: ids[s.owner], venue_id: s.venue, headliner: s.headliner,
+      id: slotId, promoter_id: ids[s.owner], venue_id: s.venue.startsWith("fixture:") ? venueFixtureId(s.venue.slice(8)) : s.venue, headliner: s.headliner,
       headliner_image_url: `https://picsum.photos/seed/ss-demo-show-${s.n}/800/500`,
-      city: { "venue-1": "London", "venue-2": "Manchester", "venue-3": "Bristol", "venue-4": "Birmingham", "venue-5": "Leeds", "venue-6": "Brighton" }[s.venue],
       date: londonDate(s.days), doors_time: "19:00", set_time: "19:45", performance_length_mins: 30,
       genres: s.genres, expected_attendance: s.attendance, support_fee: s.fee, travel_contribution: s.travel,
       requirements: s.reqs, application_deadline: londonDate(s.deadline),
@@ -222,34 +258,12 @@ async function seedSavedAndReport() {
   }
 }
 
-// --------------------------------------------------------------------- MFA
-async function ensureMfa(p) {
-  const creds = accounts[p.email];
-  const { data } = await admin.auth.admin.mfa.listFactors({ userId: ids[p.key] });
-  const factors = data?.factors ?? [];
-  if (factors.some((f) => f.factor_type === "totp" && f.status === "verified") && creds.totpSecret) return;
-  for (const f of factors) await admin.auth.admin.mfa.deleteFactor({ id: f.id, userId: ids[p.key] });
-  const c = await as(p.key);
-  const enrol = must(await c.auth.mfa.enroll({ factorType: "totp", friendlyName: "Demo authenticator" }), "mfa enroll");
-  const secret = enrol.totp.secret;
-  const ch = must(await c.auth.mfa.challenge({ factorId: enrol.id }), "mfa challenge");
-  let res = await c.auth.mfa.verify({ factorId: enrol.id, challengeId: ch.id, code: totp(secret) });
-  if (res.error) {
-    const ch2 = must(await c.auth.mfa.challenge({ factorId: enrol.id }), "mfa challenge");
-    res = await c.auth.mfa.verify({ factorId: enrol.id, challengeId: ch2.id, code: totp(secret, Date.now() + 30000) });
-  }
-  must(res, "mfa verify");
-  creds.totpSecret = secret;
-  writeAccounts(accounts);
-  log(`  + authenticator enrolled for ${p.email}`);
-}
-
 function writeSummary() {
   const rows = PEOPLE.filter((p) => p.login).map((p) => {
     const label = p.key === "artist1" ? "Artist" : p.key === "artist2" ? "Second artist" : p.key === "promA" ? "Promoter (free)" : p.key === "promB" ? "Second promoter" : "Admin";
     return `| ${label} | ${p.email} | ${accounts[p.email].password} | \`node scripts/totp.mjs ${p.email.replace(/^demo-|@.*$/g, "")}\` |`;
   });
-  const md = `# Demo logins (fictional, local/test only — do not commit)\n\nProject: ${ref}\n\n| Role | Email | Password | 2FA code |\n|---|---|---|---|\n${rows.join("\n")}\n\nAfter the password, the app asks for a 6-digit code: run the command in the last column.\nThese accounts have email notifications switched off and use ${DOMAIN} addresses, so nothing is ever emailed.\n`;
+  const md = `# Demo logins (fictional, local/test only — do not commit)\n\nProject: ${ref}\n\n| Role | Email | Password | 2FA code |\n|---|---|---|---|\n${rows.join("\n")}\n\nAfter the password, the app asks for a 6-digit code: run the command in the last column.\nThese accounts use ${DOMAIN} addresses (a reserved domain with no mailboxes) and were created without sending any email.\n`;
   fs.writeFileSync(new URL("TEST_ACCOUNTS.md", FIXTURE_DIR), md, { mode: 0o600 });
 }
 
@@ -266,6 +280,7 @@ async function doReset() {
   must(await admin.from("bookings").delete().in("slot_id", slotIds), "delete bookings");
   if (allIds.length) must(await admin.from("reports").delete().in("reporter_id", allIds), "delete reports");
   must(await admin.from("slots").delete().in("id", slotIds), "delete listings");
+  must(await admin.from("venues").delete().in("id", FIXTURE_VENUES.map((v) => venueFixtureId(v.key))), "delete fixture venues");
   for (const id of allIds) {
     const { error } = await admin.auth.admin.deleteUser(id);
     if (error) log(`  ! could not delete a demo account: ${error.message}`);
@@ -281,13 +296,14 @@ try {
   if (reset) { await doReset(); process.exit(0); }
   log("Accounts and profiles");
   for (const p of PEOPLE) { await ensureUser(p); await ensureProfiles(p); }
-  log("Listings, applications, offers, bookings");
+  log("Venues (UK-wide), listings, applications, offers, bookings");
+  await seedVenues();
   await seedSlots();
   log("Conversations, saved gigs, report");
   await seedThreads();
   await seedSavedAndReport();
-  log("Authenticators");
-  for (const p of PEOPLE.filter((x) => x.login)) await ensureMfa(p);
+  log("Authenticators (every person who logs in has one; others get one the first time they act)");
+  for (const p of PEOPLE.filter((x) => x.login)) await as(p.key);
   writeSummary();
   log("\nDone. Logins are in .dev-fixtures/TEST_ACCOUNTS.md (gitignored). 2FA code: node scripts/totp.mjs artist");
 } catch (err) {

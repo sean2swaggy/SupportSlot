@@ -1,6 +1,7 @@
 // Fictional fixture data for local/test databases ONLY. Every name, bio and
 // link here is made up. Used by scripts/seed-dev-fixtures.mjs.
 
+import { PLACES as P } from "./live.mjs";
 export const DOMAIN = "example.com";
 const img = (seed, w = 600, h = 600) => `https://picsum.photos/seed/${seed}/${w}/${h}`;
 const demo = (path) => `https://example.com/demo/${path}`;
@@ -10,7 +11,7 @@ export const PEOPLE = [
   {
     key: "artist1", login: true, role: "artist", email: `demo-artist@${DOMAIN}`, username: "demo_mara_quill",
     artist: {
-      handle: "mara-quill-demo", name: "Mara Quill", location: "Manchester", genres: ["Indie", "Folk"],
+      handle: "mara-quill-demo", name: "Mara Quill", place: P.manchester, genres: ["Indie", "Folk"],
       artist_size: "developing", travel_radius_miles: 120, monthly_listeners: 12400, availability: "available",
       last_minute_alerts: true,
       bio: "DEMO DATA — fictional artist. Fingerpicked indie-folk with a loop pedal and a lot of reverb.",
@@ -28,7 +29,7 @@ export const PEOPLE = [
   {
     key: "artist2", login: true, role: "artist", email: `demo-artist2@${DOMAIN}`, username: "demo_dex_harlow",
     artist: {
-      handle: "dex-harlow-demo", name: "Dex Harlow", location: "London", genres: ["Electronic", "Pop"],
+      handle: "dex-harlow-demo", name: "Dex Harlow", place: P.london, genres: ["Electronic", "Pop"],
       artist_size: "emerging", travel_radius_miles: 200, monthly_listeners: 3100, availability: "available",
       last_minute_alerts: false,
       bio: "DEMO DATA — fictional artist. Hardware synths, sad lyrics, danceable drums.",
@@ -42,7 +43,7 @@ export const PEOPLE = [
   {
     key: "artist3", role: "artist", email: `demo-juno@${DOMAIN}`, username: "demo_juno_vale",
     artist: {
-      handle: "juno-vale-demo", name: "Juno Vale", location: "Bristol", genres: ["Alternative", "Rock"],
+      handle: "juno-vale-demo", name: "Juno Vale", place: P.bristol, genres: ["Alternative", "Rock"],
       artist_size: "developing", travel_radius_miles: 150, monthly_listeners: 8800, availability: "limited",
       last_minute_alerts: true, bio: "DEMO DATA — fictional artist. Loud guitars, quiet verses.",
       tracks: [{ title: "Salt Flats", duration: "3:33", url: demo("juno-vale/salt-flats") }], shows: [],
@@ -51,7 +52,7 @@ export const PEOPLE = [
   {
     key: "artist4", role: "artist", email: `demo-saltwells@${DOMAIN}`, username: "demo_salt_wells",
     artist: {
-      handle: "the-salt-wells-demo", name: "The Salt Wells", location: "Leeds", genres: ["Punk", "Rock"],
+      handle: "the-salt-wells-demo", name: "The Salt Wells", place: P.leeds, genres: ["Punk", "Rock"],
       artist_size: "emerging", travel_radius_miles: 100, monthly_listeners: 1500, availability: "available",
       last_minute_alerts: false, bio: "DEMO DATA — fictional band. Three chords, no apologies.",
       tracks: [{ title: "Bus Stop Anthem", duration: "2:12", url: demo("salt-wells/bus-stop-anthem") }], shows: [],
@@ -60,24 +61,51 @@ export const PEOPLE = [
   {
     key: "artist5", role: "artist", email: `demo-odette@${DOMAIN}`, username: "demo_odette_rowe",
     artist: {
-      handle: "odette-rowe-demo", name: "Odette Rowe", location: "Brighton", genres: ["R&B", "Pop"],
+      handle: "odette-rowe-demo", name: "Odette Rowe", place: P.brighton, genres: ["R&B", "Pop"],
       artist_size: "emerging", travel_radius_miles: 90, monthly_listeners: 2200, availability: "available",
       last_minute_alerts: true, bio: "DEMO DATA — fictional artist. Late-night R&B for early-evening slots.",
       tracks: [{ title: "Half Past Honey", duration: "3:09", url: demo("odette-rowe/half-past-honey") }], shows: [],
     },
   },
   {
+    key: "artist6", role: "artist", email: `demo-gwen@${DOMAIN}`, username: "demo_gwen_tyrell",
+    artist: {
+      handle: "gwen-tyrell-demo", name: "Gwen Tyrell", place: P.aberystwyth, genres: ["Folk", "Alternative"],
+      artist_size: "emerging", travel_radius_miles: 120, monthly_listeners: 900, availability: "available",
+      last_minute_alerts: true, bio: "DEMO DATA — fictional artist from a small Welsh coastal town.",
+      tracks: [{ title: "Harbour Wall", duration: "3:15", url: demo("gwen-tyrell/harbour-wall") }], shows: [],
+    },
+  },
+  {
+    key: "artist7", role: "artist", email: `demo-ciaran@${DOMAIN}`, username: "demo_ciaran_boyle",
+    artist: {
+      handle: "ciaran-boyle-demo", name: "Ciarán Boyle", place: P.derry, genres: ["Indie", "Rock"],
+      artist_size: "developing", travel_radius_miles: 200, monthly_listeners: 5400, availability: "available",
+      last_minute_alerts: false, bio: "DEMO DATA — fictional artist from Derry (no county needed).",
+      tracks: [{ title: "Foyle Lights", duration: "3:48", url: demo("ciaran-boyle/foyle-lights") }], shows: [],
+    },
+  },
+  {
+    key: "artist8", role: "artist", email: `demo-morag@${DOMAIN}`, username: "demo_morag_ross",
+    artist: {
+      handle: "morag-ross-demo", name: "Morag Ross", place: P.inverness, genres: ["Folk", "Pop"],
+      artist_size: "emerging", travel_radius_miles: 250, monthly_listeners: 2600, availability: "limited",
+      last_minute_alerts: true, bio: "DEMO DATA — fictional artist from the Highlands.",
+      tracks: [{ title: "Long Light", duration: "3:02", url: demo("morag-ross/long-light") }], shows: [],
+    },
+  },
+  {
     key: "promA", login: true, role: "promoter", email: `demo-promoter@${DOMAIN}`, username: "demo_northern_lights",
-    promoter: { name: "Sam Okoye", company: "Northern Lights Live (Demo)", location: "Manchester" },
+    promoter: { name: "Sam Okoye", company: "Northern Lights Live (Demo)", place: P.manchester },
   },
   {
     key: "promB", login: true, role: "promoter", email: `demo-promoter-plus@${DOMAIN}`, username: "demo_harbour_co",
-    promoter: { name: "Lena Brandt", company: "Harbour & Co. Sessions (Demo)", location: "London" },
+    promoter: { name: "Lena Brandt", company: "Harbour & Co. Sessions (Demo)", place: P.london },
   },
   {
     key: "admin", login: true, role: "promoter", email: `demo-admin@${DOMAIN}`, username: "demo_staff",
     adminRole: "admin",
-    promoter: { name: "Support Slot Staff", company: "Support Slot Staff (Demo)", location: "London" },
+    promoter: { name: "Support Slot Staff", company: "Support Slot Staff (Demo)", place: P.london },
   },
 ];
 
@@ -85,6 +113,17 @@ export const imageFor = (key) => ({
   avatar: img(`ss-demo-${key}`, 400, 400),
   banner: img(`ss-demo-banner-${key}`, 1400, 500),
 });
+
+// Venues outside the six curated ones, anywhere in the UK. `typedIn: true` has no map position
+// (what a person gets when place search is unavailable) so it can't appear in radius searches.
+export const FIXTURE_VENUES = [
+  { key: "edinburgh", owner: "promB", name: "Leith Corn Hall (Demo)", address: "1 Constitution St, Edinburgh", capacity: 320, place: P.edinburgh },
+  { key: "belfast", owner: "promA", name: "Cathedral Quarter Room (Demo)", address: "10 Hill St, Belfast", capacity: 220, place: P.belfast },
+  { key: "aberystwyth", owner: "promA", name: "Promenade Social Club (Demo)", address: "Marine Terrace, Aberystwyth", capacity: 140, place: P.aberystwyth, typedIn: true },
+  { key: "newport-wales", owner: "promB", name: "Dock Street Hall (Demo)", address: "Dock St, Newport, Wales", capacity: 260, place: P.newportWales },
+  { key: "newport-shropshire", owner: "promB", name: "Market Barn (Demo)", address: "High St, Newport, Shropshire", capacity: 180, place: P.newportShropshire },
+  { key: "inverness", owner: "promA", name: "Ness Bank Church Hall (Demo)", address: "Ness Bank, Inverness", capacity: 200, place: P.inverness },
+];
 
 // Steps: view | shortlist | decline | offer | accept | declineOffer | withdraw
 // finalize: close | cancel   (done by the listing's owner after the applications)
@@ -150,6 +189,22 @@ export const SLOTS = [
       { n: 1, artist: "artist2", msg: "Pop-leaning electronic set.", steps: ["view", "shortlist", "offer"], offerMsg: "Offer for Sunday Driver." },
       { n: 2, artist: "artist5", msg: "Brighton local.", steps: [] },
     ] },
+  { n: 10, owner: "promB", venue: "fixture:edinburgh", headliner: "Forth Road Revival", days: 26, deadline: 18,
+    genres: ["Indie", "Rock"], fee: 170, travel: 5, attendance: 300, sizeFit: ["developing"],
+    reqs: ["30 minute set"], desc: "DEMO LISTING — fictional show in Scotland. Travel listed at £5: for a long journey the database lifts it to £10.",
+    apps: [{ n: 1, artist: "artist1", msg: "Happy to come up from Manchester.", steps: ["view", "shortlist"] }] },
+  { n: 11, owner: "promA", venue: "fixture:belfast", headliner: "Lagan Lines", days: 33, deadline: 25,
+    genres: ["Indie", "Alternative"], fee: 140, travel: 30, attendance: 200, sizeFit: ["emerging", "developing"],
+    reqs: [], desc: "DEMO LISTING — fictional show in Northern Ireland.", apps: [] },
+  { n: 12, owner: "promA", venue: "fixture:aberystwyth", headliner: "Coastal Static", days: 22, deadline: 15,
+    genres: ["Folk"], fee: 90, travel: 10, attendance: 120, sizeFit: ["emerging"],
+    reqs: [], desc: "DEMO LISTING — fictional show whose venue was typed in (no map position): it appears in text search but not in a radius search, and the minimum-travel rule applies.", apps: [] },
+  { n: 13, owner: "promB", venue: "fixture:newport-wales", headliner: "Usk Valley Sessions", days: 24, deadline: 16,
+    genres: ["Pop", "Indie"], fee: 110, travel: 10, attendance: 240, sizeFit: ["emerging"],
+    reqs: [], desc: "DEMO LISTING — fictional show in Newport, Wales (not to be confused with the other Newports).", apps: [] },
+  { n: 14, owner: "promB", venue: "fixture:newport-shropshire", headliner: "Edgmond Evenings", days: 27, deadline: 19,
+    genres: ["Folk", "Indie"], fee: 100, travel: 10, attendance: 160, sizeFit: ["emerging"],
+    reqs: [], desc: "DEMO LISTING — fictional show in Newport, Shropshire.", apps: [] },
 ];
 
 // [slot, application, who starts the thread, messages]
