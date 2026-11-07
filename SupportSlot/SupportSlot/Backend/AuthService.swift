@@ -274,6 +274,7 @@ final class AuthService: @unchecked Sendable {
         case "otp_expired", "flow_state_expired": return "That code has expired or isn’t right. Request a new one."
         case "user_banned": return "This account is suspended. Contact support if you think that's a mistake."
         case "signup_disabled": return "Sign-up is turned off for this project."
+        case "unexpected_failure": return "We couldn’t send your confirmation email just now. Please try again in a minute. If it keeps happening, contact support."
         default: break
         }
         if t.contains("invalid login") { return "That email and password don't match." }

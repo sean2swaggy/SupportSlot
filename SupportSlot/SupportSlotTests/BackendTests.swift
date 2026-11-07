@@ -151,6 +151,12 @@ final class AuthServiceTests: XCTestCase {
         }
     }
 
+    func testAnEmailThatCouldNotBeSentIsExplainedNotJustFailed() async {
+        StubURLProtocol.reset { _ in .json(["code": 500, "error_code": "unexpected_failure", "msg": "535 Username and Password not accepted"], status: 500) }
+        do { _ = try await makeAuth().signUp(email: "a@example.com", password: "pw-123456", role: "artist"); XCTFail("should throw") }
+        catch { XCTAssertTrue((error as? AppError)?.message.contains("confirmation email") ?? false) }
+    }
+
     func testBadPasswordGivesAPlainMessage() async {
         StubURLProtocol.reset { _ in .json(["code": 400, "error_code": "invalid_credentials", "msg": "Invalid login credentials"], status: 400) }
         do { _ = try await makeAuth().signIn(email: "a@example.com", password: "x"); XCTFail("should throw") }
