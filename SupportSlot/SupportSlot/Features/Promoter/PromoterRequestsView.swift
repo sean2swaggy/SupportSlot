@@ -201,7 +201,7 @@ struct RequestComposerView: View {
         LabeledField(label: "Reply by — date") { ISODatePicker(title: "Reply by", iso: $deadlineDate) }
         LabeledField(label: "Reply by — time") { ISOTimePicker(title: "Reply by time", time: $deadlineTime) }
         LabeledField(label: "Optional message") { TextArea(text: $r.message, placeholder: "Any extra context for the artists…", minHeight: 90) }
-        Toggle("Save as a template", isOn: $saveTemplate).tint(Theme.acid).font(Theme.body(15)).foregroundStyle(Theme.paper)
+        TapToggle(isOn: $saveTemplate) { Text("Save as a template").font(Theme.body(15)).foregroundStyle(Theme.paper) }
         if saveTemplate { TextField("Template name, e.g. Friday supports", text: $templateName).fieldStyle() }
         Text("This sends an availability check, never a reservation — artists never pay to be asked.").font(Theme.body(12)).foregroundStyle(Theme.paperDim)
         if let error { Banner(kind: .error, text: error) }

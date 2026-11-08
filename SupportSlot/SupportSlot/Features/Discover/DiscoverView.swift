@@ -190,9 +190,9 @@ struct FilterSheet: View {
             PlaceField(label: "Near (optional)", place: Binding(get: { filters.near }, set: { filters.near = $0; if $0 != nil { filters.nearMyBase = false; if filters.distance == nil { filters.distance = 25 } } }),
                        hint: "Pick a town or city to search around. Distances are straight-line miles, not journey times.")
             if let baseLabel {
-                Toggle(isOn: Binding(get: { filters.nearMyBase }, set: { filters.nearMyBase = $0; if $0 { filters.near = nil; if filters.distance == nil { filters.distance = 25 } } })) {
+                TapToggle(isOn: Binding(get: { filters.nearMyBase }, set: { filters.nearMyBase = $0; if $0 { filters.near = nil; if filters.distance == nil { filters.distance = 25 } } })) {
                     Text("Near my base (\(baseLabel))").font(Theme.body(15)).foregroundStyle(Theme.paper)
-                }.tint(Theme.acid)
+                }
             }
             if filters.near != nil || filters.nearMyBase {
                 menu("Within", selection: Binding(get: { filters.distance.map(String.init) ?? "" }, set: { filters.distance = Int($0) }),

@@ -24,9 +24,9 @@ struct SettingsView: View {
 
                 if store.role == .artist {
                     section("Notifications") {
-                        Toggle(isOn: Binding(get: { notifyRequests }, set: { v in Task { await setNotify(v) } })) {
+                        TapToggle(isOn: Binding(get: { notifyRequests }, set: { v in Task { await setNotify(v) } })) {
                             Text("Tell me when a promoter sends an availability request").font(Theme.body(15)).foregroundStyle(Theme.paper)
-                        }.tint(Theme.acid)
+                        }
                         Text("Everything important also appears in the bell, always. Support Slot doesn’t send email notifications.").dimBody(12)
                         FieldError(message: settingError)
                     }

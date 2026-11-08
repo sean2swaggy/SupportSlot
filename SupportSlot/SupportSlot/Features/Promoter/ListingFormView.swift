@@ -137,12 +137,12 @@ struct ListingFormView: View {
             LabeledField(label: "Applications close", error: show(.applicationDeadline)) { ISODatePicker(title: "Applications close", iso: $draft.applicationDeadline) }
             LabeledField(label: "Requirements (one per line, max 10)", error: show(.requirementsText)) { TextArea(text: $draft.requirementsText, placeholder: "Own backline\n30 minute set", minHeight: 90, invalid: show(.requirementsText) != nil) }
             LabeledField(label: "Description", error: show(.description), hint: "\(draft.description.count)/2000") { TextArea(text: $draft.description, placeholder: "What’s the night, who’s the crowd?", minHeight: 110, invalid: show(.description) != nil) }
-            Toggle(isOn: $draft.isUrgent) {
+            TapToggle(isOn: $draft.isUrgent) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("This is last-minute").font(Theme.body(15, weight: .medium)).foregroundStyle(Theme.paper)
                     Text("List it under Needed tonight. Artists nearby who’ve turned alerts on are told.").font(Theme.body(12)).foregroundStyle(Theme.paperDim)
                 }
-            }.tint(Theme.acid)
+            }
 
             if submitted, !errors.isEmpty { Banner(kind: .error, text: "Fix the highlighted fields to continue.") }
             Button("Review listing") { submitted = true; if errors.isEmpty { showPreview = true } }.buttonStyle(.appPrimary)
