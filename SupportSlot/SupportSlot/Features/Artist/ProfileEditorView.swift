@@ -98,7 +98,7 @@ private struct PhotosEditor: View {
 
     var body: some View {
         EditorSection(title: "Photos") {
-            PhotoField(label: "Profile photo", imageUrl: $image, maxDimension: 640)
+            PhotoField(label: "Profile photo", imageUrl: $image, maxDimension: ProfilePhoto.size, cropSquare: true)
             PhotoField(label: "Banner", imageUrl: $banner, maxDimension: 1200, square: false, height: 80)
             AsyncButton(compact: true) { await save() } label: { Text("Save photos") }
             SaveStatus(error: error, saved: saved)

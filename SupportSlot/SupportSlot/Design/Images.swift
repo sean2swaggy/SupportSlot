@@ -86,15 +86,32 @@ struct Avatar: View {
 enum ImageProcessor {
     static let maxChars = 1_500_000
 
-    static func dataURL(from image: UIImage, maxDimension: CGFloat) -> String? {
-        let scale = min(1, maxDimension / max(image.size.width, image.size.height))
-        let target = CGSize(width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())
+    /// - Parameter cropSquare: cut the middle square out of the photo first (profile pictures are square,
+    ///   like Instagram and TikTok). The result is never enlarged beyond the photo's own size.
+    static func dataURL(from image: UIImage, maxDimension: CGFloat, cropSquare: Bool = false) -> String? {
+        let w = image.size.width, h = image.size.height
+        guard w > 0, h > 0 else { return nil }
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
-        let resized = UIGraphicsImageRenderer(size: target, format: format).image { ctx in
-            UIColor.black.setFill(); ctx.fill(CGRect(origin: .zero, size: target))
-            image.draw(in: CGRect(origin: .zero, size: target))
+        let resized: UIImage
+        if cropSquare {
+            let side = min(w, h)
+            let edge = min(side, maxDimension).rounded()
+            let target = CGSize(width: edge, height: edge)
+            let scale = edge / side
+            let drawn = CGSize(width: w * scale, height: h * scale)
+            resized = UIGraphicsImageRenderer(size: target, format: format).image { ctx in
+                UIColor.black.setFill(); ctx.fill(CGRect(origin: .zero, size: target))
+                image.draw(in: CGRect(x: -(drawn.width - edge) / 2, y: -(drawn.height - edge) / 2, width: drawn.width, height: drawn.height))
+            }
+        } else {
+            let scale = min(1, maxDimension / max(w, h))
+            let target = CGSize(width: (w * scale).rounded(), height: (h * scale).rounded())
+            resized = UIGraphicsImageRenderer(size: target, format: format).image { ctx in
+                UIColor.black.setFill(); ctx.fill(CGRect(origin: .zero, size: target))
+                image.draw(in: CGRect(origin: .zero, size: target))
+            }
         }
         var quality: CGFloat = 0.85
         while quality >= 0.3 {
@@ -107,20 +124,25 @@ enum ImageProcessor {
         return nil
     }
 
-    static func load(_ item: PhotosPickerItem, maxDimension: CGFloat) async throws -> String {
+    static func load(_ item: PhotosPickerItem, maxDimension: CGFloat, cropSquare: Bool = false) async throws -> String {
         guard let data = try await item.loadTransferable(type: Data.self), data.count < 25_000_000, let image = UIImage(data: data) else {
             throw AppError("That doesn't look like a valid image.")
         }
-        guard let url = dataURL(from: image, maxDimension: maxDimension) else { throw AppError("That photo is too large to upload. Try a smaller one.") }
+        guard let url = dataURL(from: image, maxDimension: maxDimension, cropSquare: cropSquare) else { throw AppError("That photo is too large to upload. Try a smaller one.") }
         return url
     }
 }
+
+/// The size of a profile picture: square, 320 × 320 pixels. Instagram's is 320 × 320 and TikTok asks for at least 200 × 200.
+enum ProfilePhoto { static let size: CGFloat = 320 }
 
 /// A photo picker button that shows the current image.
 struct PhotoField: View {
     let label: String
     @Binding var imageUrl: String?
     var maxDimension: CGFloat = 800
+    /// Profile pictures: cut a square from the middle of the chosen photo.
+    var cropSquare = false
     var square = true
     var height: CGFloat = 120
     @State private var item: PhotosPickerItem?
@@ -146,12 +168,16 @@ struct PhotoField: View {
                     }
                 }
             }
+            if cropSquare {
+                Text("Square, \(Int(maxDimension)) × \(Int(maxDimension)) pixels — the same as Instagram. We use the middle of your photo.")
+                    .font(Theme.body(12)).foregroundStyle(Theme.paperDim)
+            }
             FieldError(message: error)
         }
         .onChange(of: item) { _, new in
             guard let new else { return }
             Task {
-                do { imageUrl = try await ImageProcessor.load(new, maxDimension: maxDimension); error = nil }
+                do { imageUrl = try await ImageProcessor.load(new, maxDimension: maxDimension, cropSquare: cropSquare); error = nil }
                 catch { self.error = (error as? AppError)?.message ?? "That photo couldn't be used." }
                 item = nil
             }

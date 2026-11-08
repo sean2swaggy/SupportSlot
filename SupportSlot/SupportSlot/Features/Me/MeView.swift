@@ -139,7 +139,7 @@ struct PromoterDetailsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 8) { Eyebrow("Promoter"); DisplayTitle("Your details", size: 30) }
                 Text("This appears on every slot you post.").dimBody(14)
-                PhotoField(label: "Profile photo", imageUrl: $avatar, maxDimension: 640)
+                PhotoField(label: "Profile photo", imageUrl: $avatar, maxDimension: ProfilePhoto.size, cropSquare: true)
                 LabeledField(label: "Company / collective name") { TextField("Your company", text: $company).fieldStyle() }
                 PlaceField(label: "Based in", place: $place, hint: "Shown on your promoter page. Your listings use their venue’s place.")
                 if saved { Text("Saved ✓").font(Theme.mono(11)).foregroundStyle(Theme.ok).textCase(.uppercase) }

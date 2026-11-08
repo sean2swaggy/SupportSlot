@@ -126,7 +126,7 @@ struct OnboardingView: View {
     private var artistStep: some View {
         VStack(alignment: .leading, spacing: 18) {
             heading("Tell us about your project", "Solo artist or full band — either works.")
-            PhotoField(label: "Profile photo", imageUrl: $image, maxDimension: 640)
+            PhotoField(label: "Profile photo", imageUrl: $image, maxDimension: ProfilePhoto.size, cropSquare: true)
             LabeledField(label: "Artist / band name") { TextField("Your name", text: $name).fieldStyle() }
             PlaceField(label: "Based in", place: $place, error: stepError == Self.placeMissing ? Self.placeMissing : nil, hint: "Search for your actual town, city or village. You can type it in if search isn’t available.")
             LabeledField(label: "Genres (up to 5)") { ChoiceChips(options: Catalog.genres, selection: $genres, limit: 5) }
@@ -158,7 +158,7 @@ struct OnboardingView: View {
     private var promoterStep: some View {
         VStack(alignment: .leading, spacing: 18) {
             heading("Your promoter details", "This appears on every slot you post.")
-            PhotoField(label: "Profile photo", imageUrl: $image, maxDimension: 640)
+            PhotoField(label: "Profile photo", imageUrl: $image, maxDimension: ProfilePhoto.size, cropSquare: true)
             LabeledField(label: "Company / collective name") { TextField("Your company or collective", text: $name).fieldStyle() }
             PlaceField(label: "Based in", place: $place, error: stepError == Self.placeMissing ? Self.placeMissing : nil, hint: "Search for your actual town, city or village. You can type it in if search isn’t available.")
         }
