@@ -30,6 +30,7 @@ struct VisitorShell: View {
 /// Signed-in artists and promoters.
 struct MainShell: View {
     @Environment(AppStore.self) private var store
+    @Environment(PurchaseStore.self) private var purchases
 
     var body: some View {
         @Bindable var store = store
@@ -62,7 +63,21 @@ struct MainShell: View {
         .toolbarBackground(.visible, for: .tabBar)
         .onAppear { store.selectedTab = store.role == .artist ? .discover : .myGigs }
         .sheet(item: Binding(get: { store.presentedSlotID.map(SlotRoute.init) }, set: { store.presentedSlotID = $0?.id })) { route in
-            NavigationStack { SlotDetailView(slotId: route.id) }.environment(store).presentationBackground(Theme.ink)
+            NavigationStack { SlotDetailView(slotId: route.id) }.environment(store).environment(purchases).presentationBackground(Theme.ink)
+        }
+        .sheet(item: Binding(get: { store.presentedApplicationID.map(SlotRoute.init) }, set: { store.presentedApplicationID = $0?.id })) { route in
+            NavigationStack {
+                ApplicationDetailView(applicationId: route.id)
+                    .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Close") { store.presentedApplicationID = nil } } }
+            }
+            .environment(store).environment(purchases).presentationBackground(Theme.ink)
+        }
+        .sheet(item: Binding(get: { store.presentedListingID.map(SlotRoute.init) }, set: { store.presentedListingID = $0?.id })) { route in
+            NavigationStack {
+                ApplicantsView(slotId: route.id)
+                    .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Close") { store.presentedListingID = nil } } }
+            }
+            .environment(store).environment(purchases).presentationBackground(Theme.ink)
         }
     }
 }

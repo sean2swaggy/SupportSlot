@@ -38,6 +38,8 @@ struct NotificationsView: View {
                             Task {
                                 await store.markNotificationRead(n)
                                 dismiss()
+                                // Let this sheet finish closing first, or the next screen can fail to appear.
+                                try? await Task.sleep(nanoseconds: 450_000_000)
                                 store.open(href: n.href)
                             }
                         } label: {

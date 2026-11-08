@@ -54,6 +54,9 @@ final class AppStore {
     // In-app navigation (so a notification can open the right screen).
     var selectedTab: AppTab = .discover
     var presentedSlotID: ID?
+    /// An application or a listing opened from a notification. Shown as a sheet by the main shell.
+    var presentedApplicationID: ID?
+    var presentedListingID: ID?
     var pendingThreadID: ID?
 
     /// A one-off message to show on the next screen (e.g. an email link that didn't work).
@@ -297,6 +300,16 @@ final class AppStore {
         guard let href, !href.isEmpty else { return }
         let path = href.split(separator: "?").first.map(String.init) ?? href
         if path.hasPrefix("/slot/") { presentedSlotID = String(path.dropFirst("/slot/".count)); return }
+        if path.hasPrefix("/application/") {
+            let id = String(path.dropFirst("/application/".count))
+            if role == .artist { presentedApplicationID = id } else { selectedTab = .myGigs }
+            return
+        }
+        if path.hasPrefix("/listing/") {
+            let id = String(path.dropFirst("/listing/".count))
+            if role == .promoter { presentedListingID = id } else { selectedTab = .applications }
+            return
+        }
         if path.hasPrefix("/booking/") { selectedTab = role == .artist ? .applications : .myGigs; return }
         switch path {
         case "/applications": selectedTab = role == .artist ? .applications : .myGigs
