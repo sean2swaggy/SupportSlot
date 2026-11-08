@@ -94,7 +94,6 @@ struct AuthView: View {
                 CheckboxRow(isOn: $agreed) {
                     (Text("I agree to the ") + Text("Terms").underline() + Text(" and ") + Text("Privacy Policy").underline() +
                      Text(", and understand there’s ") + Text("no pay-to-play").underline() + Text(" on Support Slot."))
-                        .onTapGesture { legal = .terms }
                 }
                 HStack(spacing: 16) {
                     Button("Terms") { legal = .terms }

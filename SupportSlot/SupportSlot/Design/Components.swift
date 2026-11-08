@@ -323,19 +323,45 @@ struct ISOTimePicker: View {
 }
 
 /// Multi-select of fixed options (genres, artist sizes).
+/// What tapping a chip does: choose it, or un-choose it, or nothing when the limit is full.
+enum ChipSelection {
+    static func toggled(_ option: String, in selection: [String], limit: Int?) -> [String] {
+        if selection.contains(option) { return selection.filter { $0 != option } }
+        if let limit, selection.count >= limit { return selection }
+        return selection + [option]
+    }
+    static func isFull(_ selection: [String], limit: Int?) -> Bool {
+        guard let limit else { return false }
+        return selection.count >= limit
+    }
+}
+
 struct ChoiceChips: View {
     let options: [String]
     @Binding var selection: [String]
     var limit: Int? = nil
     var label: (String) -> String = { $0 }
 
+    private var full: Bool { ChipSelection.isFull(selection, limit: limit) }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            chips
+            if let limit {
+                Text(full ? "\(selection.count) of \(limit) chosen — tap one you’ve chosen to swap it."
+                          : "\(selection.count) of \(limit) chosen")
+                    .font(Theme.body(12)).foregroundStyle(full ? Theme.acid : Theme.paperDim)
+                    .accessibilityLabel(full ? "\(selection.count) of \(limit) chosen. Unselect one to pick another." : "\(selection.count) of \(limit) chosen")
+            }
+        }
+    }
+
+    private var chips: some View {
         FlowLayout(spacing: 8) {
             ForEach(options, id: \.self) { option in
                 let on = selection.contains(option)
                 Button {
-                    if on { selection.removeAll { $0 == option } }
-                    else if limit == nil || selection.count < limit! { selection.append(option) }
+                    selection = ChipSelection.toggled(option, in: selection, limit: limit)
                 } label: {
                     Text(label(option).uppercased())
                         .font(Theme.mono(11))
@@ -344,6 +370,7 @@ struct ChoiceChips: View {
                         .padding(.horizontal, 12).frame(minHeight: 38)
                         .background(on ? Theme.acid : .clear)
                         .overlay(Rectangle().stroke(on ? Theme.acid : Theme.inkBorder, lineWidth: 1))
+                        .opacity(full && !on ? 0.4 : 1)
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(on ? .isSelected : [])

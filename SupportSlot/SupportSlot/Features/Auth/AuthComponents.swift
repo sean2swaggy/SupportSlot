@@ -39,6 +39,8 @@ struct CheckboxRow<Label: View>: View {
             .accessibilityLabel("Agree")
             .accessibilityValue(isOn ? "checked" : "unchecked")
             label.font(Theme.body(14)).foregroundStyle(Theme.paperDim).padding(.top, 10)
+                .contentShape(Rectangle())
+                .onTapGesture { isOn.toggle() }
         }
     }
 }
