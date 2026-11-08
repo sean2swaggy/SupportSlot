@@ -10,6 +10,7 @@ struct RootView: View {
     @State private var showTour = false
     #if DEBUG
     @State private var previewBooking: Booking?
+    @State private var previewSent = false
     #endif
 
     var body: some View {
@@ -60,6 +61,11 @@ struct RootView: View {
             if CommandLine.arguments.contains("-previewBooked") { previewBooking = PreviewData.booking }
         }
         .sheet(item: $previewBooking) { BookedCelebrationSheet(booking: $0) }
+        .task { if CommandLine.arguments.contains("-previewSent") { previewSent = true } }
+        .sheet(isPresented: $previewSent) {
+            VStack(spacing: 18) { SentAnimationView(); Text("Application sent.").font(Theme.display(28)).foregroundStyle(Theme.paper) }
+                .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.ink).presentationBackground(Theme.ink)
+        }
         #endif
         .task(id: store.phase == .ready) {
             // Keep unread counts, applications and offers current without a manual refresh.

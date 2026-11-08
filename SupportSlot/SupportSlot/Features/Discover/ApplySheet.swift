@@ -19,10 +19,9 @@ struct ApplySheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 if done {
-                    Image(systemName: "checkmark").font(.system(size: 26, weight: .bold)).foregroundStyle(Theme.acid)
-                        .frame(width: 60, height: 60).overlay(Rectangle().stroke(Theme.acid, lineWidth: 1))
-                    DisplayTitle("Application submitted", size: 28)
-                    Text("The promoter sees your profile, your chosen song and your message. We’ll notify you when they respond.").dimBody()
+                    SentAnimationView().frame(maxWidth: .infinity)
+                    DisplayTitle("Application sent.", size: 28).frame(maxWidth: .infinity, alignment: .center).multilineTextAlignment(.center)
+                    Text("The promoter sees your profile, your chosen song and your message. We’ll notify you when they respond.").dimBody().multilineTextAlignment(.center)
                     Button("Done") { dismiss() }.buttonStyle(.appPrimary)
                 } else {
                     Eyebrow("Apply")
