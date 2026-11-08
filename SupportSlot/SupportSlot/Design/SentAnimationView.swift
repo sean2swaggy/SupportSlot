@@ -5,6 +5,8 @@ import UIKit
 /// themselves, and a burst of squares spreads out, with a short success buzz.
 /// With Reduce Motion on, the finished tick simply appears.
 struct SentAnimationView: View {
+    /// Without the plane (e.g. "You're booked") the ring starts straight away.
+    var withPlane = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var flight: CGFloat = 0     // 0 → 1: the plane's journey
     @State private var ring: CGFloat = 0
@@ -40,13 +42,13 @@ struct SentAnimationView: View {
                 .stroke(Theme.acid, style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                 .frame(width: 52, height: 52)
             // The plane: starts low and left, curves up and to the right, shrinks and fades.
-            Image(systemName: "paperplane.fill")
+            if withPlane { Image(systemName: "paperplane.fill")
                 .font(.system(size: 34, weight: .bold))
                 .foregroundStyle(Theme.acid)
                 .rotationEffect(.degrees(-20))
                 .scaleEffect(1 - 0.55 * flight)
                 .offset(x: -110 + 260 * flight, y: 120 - 250 * flight - 40 * sin(flight * .pi))
-                .opacity(flight == 0 ? 0 : Double(1 - max(0, (flight - 0.55) / 0.45)))
+                .opacity(flight == 0 ? 0 : Double(1 - max(0, (flight - 0.55) / 0.45))) }
         }
         .frame(width: 220, height: 220)
         .accessibilityHidden(true)
@@ -55,9 +57,11 @@ struct SentAnimationView: View {
 
     private func play() async {
         if reduceMotion { ring = 1; tick = 1; pop = true; return }
-        withAnimation(.easeIn(duration: 0.1)) { flight = 0.001 }
-        withAnimation(.easeInOut(duration: 0.7)) { flight = 1 }
-        try? await Task.sleep(for: .milliseconds(450))
+        if withPlane {
+            withAnimation(.easeIn(duration: 0.1)) { flight = 0.001 }
+            withAnimation(.easeInOut(duration: 0.7)) { flight = 1 }
+            try? await Task.sleep(for: .milliseconds(450))
+        }
         withAnimation(.easeOut(duration: 0.5)) { ring = 1; pop = true }
         try? await Task.sleep(for: .milliseconds(380))
         withAnimation(.easeOut(duration: 0.3)) { tick = 1 }

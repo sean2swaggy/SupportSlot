@@ -70,26 +70,40 @@ struct BookingExtras: View {
 /// Shown the moment an artist accepts an offer.
 struct BookedCelebrationSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let booking: Booking
+    @State private var shown = false
+
+    /// Each block slides up and fades in a beat after the one before it (all at once with Reduce Motion).
+    private func reveal(_ step: Double) -> some ViewModifier {
+        Reveal(shown: shown, delay: reduceMotion ? 0 : 0.55 + step * 0.12, move: !reduceMotion)
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    Image(systemName: "checkmark").font(.system(size: 28, weight: .bold)).foregroundStyle(Theme.acid)
-                        .frame(width: 64, height: 64).overlay(Rectangle().stroke(Theme.acid, lineWidth: 1)).accessibilityHidden(true)
+                    SentAnimationView(withPlane: false).frame(maxWidth: .infinity)
                     Text("You’re booked.").font(Theme.display(30)).foregroundStyle(Theme.paper)
+                        .modifier(reveal(0))
                     VStack(spacing: 6) {
                         Text(booking.headliner).font(Theme.body(17, weight: .medium)).foregroundStyle(Theme.paper).multilineTextAlignment(.center)
                         Text("\(booking.venueName), \(booking.venueCity)").font(Theme.body(14)).foregroundStyle(Theme.paperDim)
                         Text("\(UKDates.formatShowDate(booking.eventDate, withYear: true)) · doors \(UKDates.clock(booking.doorsTime)) · on stage \(UKDates.clock(booking.setTime))")
                             .font(Theme.mono(12)).foregroundStyle(Theme.acid).multilineTextAlignment(.center)
                     }
-                    AddToCalendarButton(booking: booking, prominent: true)
-                    ShareLink(item: ShowDetails.shareText(booking)) { Label("Share show details", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity) }
-                        .buttonStyle(.app(.outline))
-                    Text("Agree how and when you’re paid with the promoter. Support Slot doesn’t take or hold payment.").dimBody(12).multilineTextAlignment(.center)
-                    Button("Done") { dismiss() }.buttonStyle(.app(.ghost))
+                    .modifier(reveal(1))
+                    VStack(spacing: 18) {
+                        AddToCalendarButton(booking: booking, prominent: true)
+                        ShareLink(item: ShowDetails.shareText(booking)) { Label("Share show details", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity) }
+                            .buttonStyle(.app(.outline))
+                    }
+                    .modifier(reveal(2))
+                    VStack(spacing: 18) {
+                        Text("Agree how and when you’re paid with the promoter. Support Slot doesn’t take or hold payment.").dimBody(12).multilineTextAlignment(.center)
+                        Button("Done") { dismiss() }.buttonStyle(.app(.ghost))
+                    }
+                    .modifier(reveal(3))
                 }
                 .padding(24)
             }
@@ -97,5 +111,20 @@ struct BookedCelebrationSheet: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationBackground(Theme.ink)
+        .onAppear { shown = true }
+    }
+}
+
+/// Fades a block in and lifts it a little, after a delay.
+private struct Reveal: ViewModifier {
+    let shown: Bool
+    let delay: Double
+    let move: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown || !move ? 0 : 14)
+            .animation(.easeOut(duration: 0.45).delay(delay), value: shown)
     }
 }
