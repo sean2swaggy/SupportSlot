@@ -37,7 +37,26 @@ final class Transport {
         return r
     }
 
+    /// Methods that are safe to send twice. A POST (which can create things) is never repeated automatically.
+    static func isSafeToRepeat(_ request: URLRequest) -> Bool {
+        ["GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"].contains((request.httpMethod ?? "GET").uppercased())
+    }
+
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        var retried = false
+        while true {
+            do {
+                return try await sendOnce(request)
+            } catch let error as AppError where error.isNetwork && error.wasConnectionLost && !retried && Self.isSafeToRepeat(request) {
+                // A connection that went stale while the app was idle: open a fresh one and try once more.
+                retried = true
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                continue
+            }
+        }
+    }
+
+    private func sendOnce(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         do {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw AppError.generic("Unexpected response from the server.") }
@@ -46,6 +65,8 @@ final class Transport {
             throw error
         } catch let error as URLError {
             switch error.code {
+            case .networkConnectionLost:
+                throw AppError.connectionLost
             case .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotFindHost,
                  .cannotConnectToHost, .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff:
                 throw AppError.offline

@@ -8,6 +8,8 @@ final class StubURLProtocol: URLProtocol {
         var status: Int = 200
         var headers: [String: String] = [:]
         var body: Data = Data()
+        /// When set, the request fails with this network error instead of getting a reply.
+        var failure: URLError.Code?
         static func json(_ object: Any, status: Int = 200, headers: [String: String] = [:]) -> Reply {
             Reply(status: status, headers: headers, body: try! JSONSerialization.data(withJSONObject: object))
         }
@@ -51,6 +53,10 @@ final class StubURLProtocol: URLProtocol {
         let handler = Self.handler
         Self.lock.unlock()
         let reply = handler?(req) ?? Reply(status: 500)
+        if let failure = reply.failure {
+            client?.urlProtocol(self, didFailWithError: URLError(failure))
+            return
+        }
         let response = HTTPURLResponse(url: req.url!, statusCode: reply.status, httpVersion: "HTTP/1.1", headerFields: reply.headers)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: reply.body)

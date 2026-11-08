@@ -24,6 +24,9 @@ struct AppError: Error, LocalizedError, Equatable {
 
     static let sessionExpired = AppError("Your session has expired. Please log in again.", code: "not_authenticated")
     static let offline = AppError("We couldn't reach the server. Check your connection and try again.", isNetwork: true)
+    /// The connection dropped mid-request (often a stale one after the app sat idle). Same words as `offline`.
+    static let connectionLost = AppError("We couldn't reach the server. Check your connection and try again.", code: "connection_lost", isNetwork: true)
+    var wasConnectionLost: Bool { code == "connection_lost" }
     static func generic(_ fallback: String = "Something went wrong. Please try again.") -> AppError { AppError(fallback) }
 }
 
