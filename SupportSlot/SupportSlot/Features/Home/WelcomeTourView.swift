@@ -13,7 +13,7 @@ struct WelcomeTourView: View {
             Page(icon: "paperplane", title: "Apply in seconds", body: "Send a short note with your profile. Promoters shortlist, then send an offer with the terms locked in."),
             Page(icon: "checkmark.seal", title: "Play the show", body: "Confirmed gigs go in your calendar with reminders. You’re paid directly by the promoter — we never take a cut."),
         ] : [
-            Page(icon: "plus.square.on.square", title: "Post a slot", body: "Add your venue and show details. Nothing is public until you publish, and there are no listing fees."),
+            Page(icon: "plus.square.on.square", title: "Post a slot", body: "Add your venue and show details. Nothing is public until you publish, and your first open listing is free."),
             Page(icon: "person.2", title: "Review artists", body: "Shortlist applicants, message them, or invite artists from the Artists tab."),
             Page(icon: "calendar", title: "Book and plan", body: "Send an offer, then use Tools for your roster, show schedules and a bookings export. You pay the artist directly."),
         ]

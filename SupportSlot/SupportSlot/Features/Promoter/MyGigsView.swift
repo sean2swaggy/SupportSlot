@@ -3,6 +3,8 @@ import SwiftUI
 /// The promoter's home: their listings, what needs attention, and posting a new one.
 struct MyGigsView: View {
     @Environment(AppStore.self) private var store
+    @Environment(PurchaseStore.self) private var purchases
+    @State private var showPaywall = false
 
     private var openCount: Int { store.myListings.filter { $0.slotStatus == .open }.count }
     private var toReview: Int { store.applications.filter { [.submitted, .viewed].contains($0.applicationStatus) }.count }
@@ -16,7 +18,12 @@ struct MyGigsView: View {
                     Eyebrow(store.promoter?.company ?? "Your gigs")
                     DisplayTitle("My gigs", size: 34)
                 }
-                NavigationLink { ListingFormView() } label: { Label("Post a support slot", systemImage: "plus") }.buttonStyle(.appPrimary)
+                if PlanRules.canPostAnother(openListings: openCount, hasTeam: purchases.hasTeam) {
+                    NavigationLink { ListingFormView() } label: { Label("Post a support slot", systemImage: "plus") }.buttonStyle(.appPrimary)
+                } else {
+                    Button { showPaywall = true } label: { Label("Post another slot", systemImage: "lock") }.buttonStyle(.appPrimary)
+                    Text("The free plan has \(PlanRules.freeLiveListings) open listing at a time. Close or fill it, or get the Team plan for unlimited listings.").dimBody(12)
+                }
 
                 if store.myListings.isEmpty || booked == 0 { gettingStarted }
 
@@ -46,6 +53,7 @@ struct MyGigsView: View {
         .screenBackground()
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: Slot.self) { ApplicantsView(slotId: $0.id) }
+        .sheet(isPresented: $showPaywall) { PaywallSheet(feature: .team).environment(store).environment(purchases) }
         .toolbar { ToolbarItem(placement: .topBarTrailing) { NotificationsButton() } }
     }
 

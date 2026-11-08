@@ -4,6 +4,7 @@ import SwiftUI
 /// used: signed out → set up the account → suspended → the app.
 struct RootView: View {
     @Environment(AppStore.self) private var store
+    @Environment(PurchaseStore.self) private var purchases
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showTour = false
@@ -46,6 +47,7 @@ struct RootView: View {
         .onChange(of: store.showVerifiedThanks) { _, _ in offerTourIfNeeded() }
         .onOpenURL { url in Task { await store.handle(url: url) } }
         .task { await store.start() }
+        .task(id: store.userId) { await purchases.setUser(store.userId.flatMap { UUID(uuidString: $0) }) }
         #if DEBUG
         .task { if CommandLine.arguments.contains("-previewVerifiedThanks") { store.showVerifiedThanks = true } } // lets the screen be looked at without signing up
         .task { if CommandLine.arguments.contains("-previewTour") { showTour = true } }

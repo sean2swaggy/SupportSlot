@@ -123,6 +123,8 @@ struct DiscoverArtistsView: View {
 /// Add or remove an artist from the promoter's private roster.
 struct SaveToRosterButton: View {
     @Environment(AppStore.self) private var store
+    @Environment(PurchaseStore.self) private var purchases
+    @State private var showPaywall = false
     let artistId: ID
     @State private var entryId: ID?
     @State private var loaded = false
@@ -137,6 +139,7 @@ struct SaveToRosterButton: View {
             FieldError(message: error)
         }
         .task { await load() }
+        .sheet(isPresented: $showPaywall) { PaywallSheet(feature: .team).environment(store).environment(purchases) }
     }
 
     private func load() async {
@@ -150,6 +153,7 @@ struct SaveToRosterButton: View {
     private func toggle() async {
         guard let uid = store.userId else { return }
         error = nil
+        if entryId == nil && !purchases.hasTeam { showPaywall = true; return }
         do {
             if let entryId { try await store.db.removeFromRoster(entryId: entryId); self.entryId = nil }
             else { try await store.db.addToRoster(promoterId: uid, artistId: artistId); await load() }

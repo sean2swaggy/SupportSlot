@@ -108,7 +108,7 @@ struct HomeView: View {
     private var noPayToPlay: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("No pay-to-play. No application fees.").font(Theme.display(24)).foregroundStyle(Theme.acidInk)
-            Text("Artists keep their full agreed fee, paid directly by the promoter. Support Slot never charges artists or takes a cut.").font(Theme.body(15)).foregroundStyle(Theme.acidInk.opacity(0.8))
+            Text("Artists keep their full agreed fee, paid directly by the promoter. Support Slot never charges artists to apply or perform, and never takes a cut of their fee.").font(Theme.body(15)).foregroundStyle(Theme.acidInk.opacity(0.8))
         }
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)

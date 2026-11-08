@@ -5,7 +5,9 @@ import SwiftUI
 /// how an artist appears or whether they get booked.
 struct ToolsView: View {
     @Environment(AppStore.self) private var store
+    @Environment(PurchaseStore.self) private var purchases
     @State private var exportURL: URL?
+    @State private var showPaywall = false
     @State private var exportError: String?
 
     var body: some View {
@@ -23,7 +25,8 @@ struct ToolsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 14) { Image(systemName: "tablecells").font(.system(size: 18)).foregroundStyle(Theme.acid).frame(width: 28)
                             VStack(alignment: .leading, spacing: 2) { Text("Export bookings").font(Theme.body(16, weight: .medium)).foregroundStyle(Theme.paper); Text("A spreadsheet (CSV) of your bookings and the terms agreed").font(Theme.body(12)).foregroundStyle(Theme.paperDim) } }
-                        if let exportURL { ShareLink(item: exportURL) { Label("Share the CSV", systemImage: "square.and.arrow.up") }.buttonStyle(.app(.primary, compact: true)) }
+                        if !purchases.hasTeam { Button { showPaywall = true } label: { Label("Unlock with Team", systemImage: "lock") }.buttonStyle(.app(.outline, compact: true)) }
+                        else if let exportURL { ShareLink(item: exportURL) { Label("Share the CSV", systemImage: "square.and.arrow.up") }.buttonStyle(.app(.primary, compact: true)) }
                         else { AsyncButton(kind: .outline, compact: true) { await export() } label: { Text("Prepare export") } }
                         FieldError(message: exportError)
                     }
@@ -35,12 +38,13 @@ struct ToolsView: View {
         .screenBackground()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { NotificationsButton() } }
+        .sheet(isPresented: $showPaywall) { PaywallSheet(feature: .team).environment(purchases) }
     }
 
     private func tool<Destination: View>(_ title: String, _ detail: String, _ icon: String, @ViewBuilder destination: @escaping () -> Destination) -> some View {
-        NavigationLink { destination() } label: {
+        NavigationLink { if purchases.hasTeam { destination() } else { PaywallScreen(feature: .team) } } label: {
             HStack(spacing: 14) {
-                Image(systemName: icon).font(.system(size: 18)).foregroundStyle(Theme.acid).frame(width: 28)
+                Image(systemName: purchases.hasTeam ? icon : "lock").font(.system(size: 18)).foregroundStyle(Theme.acid).frame(width: 28)
                 VStack(alignment: .leading, spacing: 2) { Text(title).font(Theme.body(16, weight: .medium)).foregroundStyle(Theme.paper); Text(detail).font(Theme.body(12)).foregroundStyle(Theme.paperDim) }
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Theme.paperDim)

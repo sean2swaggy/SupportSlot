@@ -39,3 +39,11 @@ By the owner's decision there is no authenticator-app step. Migration `0007` rem
 
 ## Phone sign-up: tried and removed (7 Nov 2026)
 A mobile-number option (texted code) was built and then removed by the owner's decision; sign-up is by email only. Migration `0008` added it to the database and `0009` undoes it (both were applied, so both stay in the history; run both, or neither, on a new project). Passwords are reset by email: "Forgot password?" on the log-in screen sends a reset link that opens the app (`supportslot://auth-callback`, PKCE), then the person chooses a new password. The reset email's template can be restyled in Supabase (Authentication → Emails → Templates → Reset password); it must keep `{{ .ConfirmationURL }}`.
+
+## Paid extras (Apple in-app purchase)
+
+- Products: `com.supportslot.app.gigdiary` (£5.99, non-consumable), `com.supportslot.app.team.monthly` (£19.99) and `com.supportslot.app.team.yearly` (£49.99), one subscription group. A local test configuration is `SupportSlot/Config/SupportSlot.storekit`.
+- **Not live yet:** the products must be created in App Store Connect with the same ids and prices, which needs the Apple Developer account. Until then the paywall shows "Purchases aren't available right now".
+- Enforcement is **on the device** (StoreKit verifies Apple's signed transactions; each purchase is tied to the account via `appAccountToken`). The database does **not** enforce plans: the 1-open-listing limit and locked tools can be bypassed by calling the API directly. Server-side verification (App Store Server Notifications + an edge function writing an entitlements table) is the next hardening step and needs sandbox testing with the Apple account.
+- The Gig diary table (migration 0012) is private to its owner by row-level security whether or not they bought it.
+- "Shared team logins" are **not built**: Team currently means unlimited listings and the promoter tools for one login.

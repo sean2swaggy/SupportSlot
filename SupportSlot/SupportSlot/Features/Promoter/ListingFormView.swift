@@ -5,6 +5,7 @@ import SwiftUI
 /// date, venue, times and fee are locked (the database enforces it too).
 struct ListingFormView: View {
     @Environment(AppStore.self) private var store
+    @Environment(PurchaseStore.self) private var purchases
     @Environment(\.dismiss) private var dismiss
     var editing: Slot?
 
@@ -145,7 +146,7 @@ struct ListingFormView: View {
 
             if submitted, !errors.isEmpty { Banner(kind: .error, text: "Fix the highlighted fields to continue.") }
             Button("Review listing") { submitted = true; if errors.isEmpty { showPreview = true } }.buttonStyle(.appPrimary)
-            Text("No listing fees. Nothing is public until you publish.").font(Theme.mono(10)).foregroundStyle(Theme.paperDim).textCase(.uppercase).frame(maxWidth: .infinity)
+            Text("Your first open listing is free. Nothing is public until you publish.").font(Theme.mono(10)).foregroundStyle(Theme.paperDim).textCase(.uppercase).frame(maxWidth: .infinity)
         }
         .padding(20)
     }
@@ -213,6 +214,11 @@ struct ListingFormView: View {
                 publishedId = editing.id
             } else {
                 guard let uid = store.userId else { error = AppError.sessionExpired.message; return }
+                let open = store.myListings.filter { $0.slotStatus == .open }.count
+                guard PlanRules.canPostAnother(openListings: open, hasTeam: purchases.hasTeam) else {
+                    error = "The free plan has \(PlanRules.freeLiveListings) open listing at a time. Close or fill it first, or get the Team plan."
+                    return
+                }
                 publishedId = try await store.perform { try await store.db.createListing(promoterId: uid, draft, headlinerImage: headlinerImage, artistPhoto: artistPhoto) }
             }
         } catch { self.error = (error as? AppError)?.message ?? "We couldn’t save your listing." }

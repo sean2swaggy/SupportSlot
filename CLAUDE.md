@@ -11,8 +11,14 @@ A UK marketplace connecting independent artists with promoters posting
 (Auth with email confirmation by a typed code and password-only sign-in, Postgres + RLS, SQL functions). There is no
 server of our own; `web/` is a sample-data web companion (Vite + React, see
 `web/README.md`) not yet wired to Supabase. **No money passes through the platform** —
-the promoter pays the artist directly; there is no payment provider, fee or
-subscription, and every promoter has the promoter tools.
+the promoter pays the artist directly; there is no booking fee, payout or
+payment provider between them. Support Slot sells two optional extras through
+**Apple in-app purchase** only (`Purchases/`): the artist **Gig diary** (£5.99
+once) and the promoter **Team plan** (£19.99/month or £49.99/year: unlimited open
+listings + the promoter tools; free promoters get 1 open listing). Nothing sold
+affects booking, ranking or visibility — artists never pay to apply or be seen.
+Entitlements are checked on the device by StoreKit and tied to the account via
+`appAccountToken`; the database does not enforce them (see docs/CURRENT_STATE.md).
 
 ```
 npm test                                   # DB tests: real migrations in PGlite

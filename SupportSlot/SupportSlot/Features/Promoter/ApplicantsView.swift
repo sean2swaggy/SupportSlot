@@ -5,6 +5,7 @@ import SwiftUI
 /// has looked) — that's the only thing that sets "viewed".
 struct ApplicantsView: View {
     @Environment(AppStore.self) private var store
+    @Environment(PurchaseStore.self) private var purchases
     let slotId: ID
 
     @State private var slot: Slot?
@@ -20,7 +21,9 @@ struct ApplicantsView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     header(slot)
                     ListingActionsView(slot: slot) { await reload() }
-                    NavigationLink { ShowScheduleView(slot: slot) } label: { Label("Show schedule", systemImage: "list.bullet.rectangle") }.buttonStyle(.appOutline)
+                    NavigationLink { if purchases.hasTeam { ShowScheduleView(slot: slot) } else { PaywallScreen(feature: .team) } } label: {
+                        Label("Show schedule", systemImage: purchases.hasTeam ? "list.bullet.rectangle" : "lock")
+                    }.buttonStyle(.appOutline)
                     if slot.slotStatus != .open && slot.slotStatus != .filled {
                         Banner(kind: .info, text: slot.slotStatus == .closed ? "Applications are closed. Existing applicants keep their status and you can still make offers." : "This listing was cancelled.")
                     }
@@ -295,6 +298,8 @@ struct OfferSheet: View {
 /// the ones that make sense for the listing's current status.
 struct ListingActionsView: View {
     @Environment(AppStore.self) private var store
+    @Environment(PurchaseStore.self) private var purchases
+    @State private var showPaywall = false
     let slot: Slot
     var onChanged: () async -> Void
     @State private var sheet: Sheet?
@@ -316,6 +321,7 @@ struct ListingActionsView: View {
             }
             if let error, sheet == nil { Banner(kind: .error, text: error) }
         }
+        .sheet(isPresented: $showPaywall) { PaywallSheet(feature: .team).environment(store).environment(purchases) }
         .sheet(item: $sheet) { which in
             switch which {
             case .close:
@@ -334,6 +340,9 @@ struct ListingActionsView: View {
 
     private func reopen() async {
         error = nil
+        if !PlanRules.canPostAnother(openListings: store.myListings.filter { $0.slotStatus == .open }.count, hasTeam: purchases.hasTeam) {
+            showPaywall = true; return
+        }
         do { try await store.perform { try await store.db.reopenSlot(id: slot.id) }; await onChanged() }
         catch { self.error = (error as? AppError)?.message ?? "Couldn’t reopen this listing." }
     }

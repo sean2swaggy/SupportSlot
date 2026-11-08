@@ -11,8 +11,9 @@ sample-data web companion (see `web/README.md`) with no backend yet.
 
 **Support Slot handles no money.** An offer records the fee and travel the
 promoter and artist agreed; once the artist accepts, the promoter pays them
-directly. There is no payment provider, booking fee, payout or subscription,
-and every promoter has the promoter tools. Notifications are in-app only (no
+directly. There is no booking fee or payout. Two optional extras are sold by Apple
+in-app purchase: the artist Gig diary (once) and the promoter Team plan
+(monthly/yearly); free promoters get one open listing. Notifications are in-app only (no
 email or push).
 
 See `CLAUDE.md` for the rules the codebase follows and `docs/CURRENT_STATE.md`

@@ -45,6 +45,11 @@ enum LegalContent {
                 "Support Slot doesn’t take, hold or process payments, and isn’t a bank or an escrow service. An offer records the fee and travel contribution the promoter has agreed to pay; once the artist accepts, the promoter is responsible for paying the artist directly, as agreed between them. Support Slot never takes a cut of an artist’s fee and artists never pay to apply or perform. Any disagreement about payment is between the artist and the promoter, but you can report it to us and we may act on an account that breaks these terms.",
                 "You’re responsible for any taxes arising from fees you receive through Support Slot.",
             ]),
+            LegalSection(heading: "6A. Optional purchases", paragraphs: [
+                "Support Slot is free to use. We also sell two optional extras through Apple’s in-app purchase: a one-time Gig diary for artists (a private log of your own shows), and a monthly or yearly Team plan for promoters (unlimited open listings and the private promoter tools). A free promoter account can have one open listing at a time.",
+                "Purchases are paid to Apple, not to us, and are subject to Apple’s terms. Subscriptions renew automatically until you cancel in your Apple ID settings, at least 24 hours before the period ends. You can restore earlier purchases from the purchase screen. Refunds are handled by Apple.",
+                "Nothing you can buy gives anyone a better chance of being booked, any ranking, or any extra visibility. Artists never pay to apply, be booked or be seen.",
+            ]),
             LegalSection(heading: "7. Cancellations & rescheduling", paragraphs: [
                 "Either party can cancel a confirmed booking in the app, giving a reason; the other party is told straight away. Only the promoter can change the date or times of a show; if they do, the artist is told and can cancel. Repeated late cancellations may lead us to act on an account.",
             ]),
@@ -88,7 +93,7 @@ enum LegalContent {
                 "• Profile data. Depending on your role: your artist/band or company name, city, bio, genres, profile photo, and any platform links you add (Spotify, Instagram, TikTok, SoundCloud, Bandcamp, YouTube, website). For artists, a self-reported monthly listener count.",
                 "• Age check. During sign-up we ask for your date of birth to confirm you’re 16 or over. This check happens on your device and your date of birth is never sent to or stored on our servers.",
                 "• Activity data. Slots you post or apply to, application messages, booking status, and messages you send to other users through the app.",
-                "• Payments. Support Slot doesn’t take, process or store payments, so we never collect card or bank details. An offer records the fee and travel the promoter agreed to pay; the promoter pays the artist directly.",
+                "• Payments. Support Slot doesn’t take payments between promoters and artists. An offer records the fee and travel the promoter agreed to pay; the promoter pays the artist directly. Optional in-app purchases are processed by Apple, so we never see or store your card or bank details; the purchase is tied to your account on your device.",
                 "• Reports and support requests. If you report something or contact support, we keep what you send and the details needed to follow it up, and our staff see it. Staff actions on accounts are recorded in an audit log.",
                 "• Technical data. Standard request logs (e.g. IP address) from our infrastructure providers, and a sign-in token stored securely on your device so you stay signed in.",
             ]),

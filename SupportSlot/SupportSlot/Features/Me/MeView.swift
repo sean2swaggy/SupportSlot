@@ -40,6 +40,7 @@ struct MeView: View {
             let c = ProfileChecklist.completion(ProfileChecklist.items(for: artist))
             row("Edit your profile", detail: "\(c.done)/\(c.total) done", icon: "person.crop.square") { ProfileEditorView() }
             row("Your public page", detail: "How promoters see you", icon: "eye") { ArtistProfileView(handle: artist.handle, preloaded: artist) }
+            row("Gig diary", detail: "A private log of your shows", icon: "book.closed") { GigDiaryView() }
             row("Saved searches", detail: "Get told about matching slots", icon: "bell.badge") { SavedSearchesView() }
             Card {
                 let isOn = alertsOn ?? artist.lastMinuteAlerts

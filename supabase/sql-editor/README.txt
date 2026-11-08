@@ -12,6 +12,7 @@ empty project. Wait for "Success. No rows returned" before the next one.
   9. 0009_remove_phone_accounts.sql           (email only again)
  10. 0010_reviews_and_saved_searches.sql      (post-show reviews, saved searches)
  11. 0011_hardening.sql                       (locks trigger functions, export adds reviews)
+ 12. 0012_gig_diary.sql                       (the artist Gig diary)
 
 Each file runs once. If one fails, copy the red error text and the file name; do not
 re-run the files before it. These are byte-for-byte copies of ../migrations/ (a test
