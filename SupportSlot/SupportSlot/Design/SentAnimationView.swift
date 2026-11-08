@@ -72,7 +72,7 @@ struct SentAnimationView: View {
     }
 }
 
-private struct Tick: Shape {
+struct Tick: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         p.move(to: CGPoint(x: rect.minX + rect.width * 0.02, y: rect.midY + rect.height * 0.04))

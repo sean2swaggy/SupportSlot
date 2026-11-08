@@ -105,10 +105,15 @@ struct ApplicantCard: View {
     let booking: Booking?
     @State private var showFit = false
     @State private var terms: TermsPreview?
+    @State private var justAccepted = false
 
     var body: some View {
         let artist = application.artist
         VStack(alignment: .leading, spacing: 14) {
+            if justAccepted {
+                OfferAcceptedBanner(artistName: artist?.name ?? booking?.artistName ?? "The artist")
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             HStack(alignment: .top, spacing: 12) {
                 if let artist {
                     NavigationLink(value: artist) { Avatar(imageUrl: artist.imageUrl, name: artist.name, size: 56) }.buttonStyle(.plain)
@@ -149,7 +154,16 @@ struct ApplicantCard: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.inkCard)
-        .overlay(Rectangle().stroke(Theme.inkBorder, lineWidth: 1))
+        .overlay(Rectangle().stroke(justAccepted ? Theme.acid : Theme.inkBorder, lineWidth: justAccepted ? 2 : 1))
+        .onChange(of: application.applicationStatus) { old, new in
+            // The artist accepted while this screen was open (it refreshes by itself every 45 s).
+            guard OfferAcceptedRule.shouldCelebrate(from: old, to: new) else { return }
+            withAnimation(.spring(duration: 0.45)) { justAccepted = true }
+            Task {
+                try? await Task.sleep(for: .seconds(8))
+                withAnimation(.easeInOut(duration: 0.4)) { justAccepted = false }
+            }
+        }
     }
 }
 

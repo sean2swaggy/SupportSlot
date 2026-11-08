@@ -11,6 +11,7 @@ struct RootView: View {
     #if DEBUG
     @State private var previewBooking: Booking?
     @State private var previewSent = false
+    @State private var previewAccepted = false
     #endif
 
     var body: some View {
@@ -61,6 +62,11 @@ struct RootView: View {
             if CommandLine.arguments.contains("-previewBooked") { previewBooking = PreviewData.booking }
         }
         .sheet(item: $previewBooking) { BookedCelebrationSheet(booking: $0) }
+        .task { if CommandLine.arguments.contains("-previewAccepted") { previewAccepted = true } }
+        .sheet(isPresented: $previewAccepted) {
+            OfferAcceptedBanner(artistName: "The Artist").padding(20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).background(Theme.ink).presentationBackground(Theme.ink)
+        }
         .task { if CommandLine.arguments.contains("-previewSent") { previewSent = true } }
         .sheet(isPresented: $previewSent) {
             VStack(spacing: 18) { SentAnimationView(); Text("Application sent.").font(Theme.display(28)).foregroundStyle(Theme.paper) }
