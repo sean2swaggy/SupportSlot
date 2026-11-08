@@ -44,6 +44,7 @@ struct RootView: View {
             .preferredColorScheme(.dark)
         }
         .onChange(of: store.phase == .ready) { _, _ in offerTourIfNeeded() }
+        .task(id: store.phase == .ready) { offerTourIfNeeded() }
         .onChange(of: store.showVerifiedThanks) { _, _ in offerTourIfNeeded() }
         .onOpenURL { url in Task { await store.handle(url: url) } }
         .task { await store.start() }
