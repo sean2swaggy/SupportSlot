@@ -8,6 +8,7 @@ struct ArtistApplicationControls: View {
     let booking: Booking?
     @State private var sheet: Sheet?
     @State private var error: String?
+    @State private var celebrate: Booking?
     private enum Sheet: String, Identifiable { case withdraw, declineOffer, cancel; var id: String { rawValue } }
 
     var body: some View {
@@ -34,6 +35,7 @@ struct ArtistApplicationControls: View {
             }
             if let error { Banner(kind: .error, text: error) }
         }
+        .sheet(item: $celebrate) { b in BookedCelebrationSheet(booking: b) }
         .sheet(item: $sheet) { which in
             switch which {
             case .withdraw:
@@ -59,7 +61,7 @@ struct ArtistApplicationControls: View {
             BookingTermsView(booking: b, viewer: .artist)
             Text(expired ? "This offer has expired." : "Respond by \(b.offerExpiresAt.ukDateTime). Accepting confirms the booking.").dimBody(13)
             HStack(spacing: 12) {
-                AsyncButton(compact: true) { _ = await run { try await store.db.respondToOffer(applicationId: application.id, accept: true, reason: nil) } } label: { Text("Accept offer") }
+                AsyncButton(compact: true) { await acceptOffer() } label: { Text("Accept offer") }
                     .disabled(expired)
                 Button("Decline") { sheet = .declineOffer }.buttonStyle(.app(.outline, compact: true))
             }
@@ -72,7 +74,8 @@ struct ArtistApplicationControls: View {
     private func confirmedCard(_ b: Booking) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             MonoLabel("Booking confirmed", color: Theme.ok)
-            BookingTermsView(booking: b, viewer: .artist)
+            AddToCalendarButton(booking: b, prominent: true)
+            BookingTermsView(booking: b, viewer: .artist, hideCalendar: true)
             Text("Agree how and when you’re paid with the promoter — message them from here. Support Slot doesn’t take or hold payment.").dimBody(13)
             HStack(spacing: 12) {
                 MessageButton(applicationId: application.id)
@@ -82,6 +85,14 @@ struct ArtistApplicationControls: View {
         .padding(16)
         .background(Theme.ok.opacity(0.05))
         .overlay(Rectangle().stroke(Theme.ok.opacity(0.5), lineWidth: 1))
+    }
+
+    /// Accepts the offer, then shows the "You're booked" screen with the calendar button.
+    private func acceptOffer() async {
+        let failure = await run { try await store.db.respondToOffer(applicationId: application.id, accept: true, reason: nil) }
+        if failure == nil, let confirmed = store.booking(forApplication: application.id), confirmed.bookingStatus == .confirmed {
+            celebrate = confirmed
+        }
     }
 
     /// Runs a write through the store (which re-reads afterwards). Returns the error text, or nil.

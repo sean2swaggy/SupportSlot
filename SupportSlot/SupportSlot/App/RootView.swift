@@ -8,6 +8,9 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showTour = false
+    #if DEBUG
+    @State private var previewBooking: Booking?
+    #endif
 
     var body: some View {
         @Bindable var store = store
@@ -52,6 +55,11 @@ struct RootView: View {
         #if DEBUG
         .task { if CommandLine.arguments.contains("-previewVerifiedThanks") { store.showVerifiedThanks = true } } // lets the screen be looked at without signing up
         .task { if CommandLine.arguments.contains("-previewTour") { showTour = true } }
+        .task {
+            // Lets the "You're booked" screen be looked at without a real booking.
+            if CommandLine.arguments.contains("-previewBooked") { previewBooking = PreviewData.booking }
+        }
+        .sheet(item: $previewBooking) { BookedCelebrationSheet(booking: $0) }
         #endif
         .task(id: store.phase == .ready) {
             // Keep unread counts, applications and offers current without a manual refresh.

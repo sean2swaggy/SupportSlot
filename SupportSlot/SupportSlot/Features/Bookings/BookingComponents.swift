@@ -6,6 +6,8 @@ import SwiftUI
 struct BookingTermsView: View {
     let booking: Booking
     let viewer: UserRole
+    /// Set when the screen already offers a prominent "Add to calendar".
+    var hideCalendar = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -27,7 +29,7 @@ struct BookingTermsView: View {
                 Text(m).font(Theme.body(15)).foregroundStyle(Theme.paper).padding(.leading, 12)
                     .overlay(alignment: .leading) { Rectangle().fill(Theme.acid).frame(width: 2) }
             }
-            if booking.bookingStatus == .confirmed { BookingExtras(booking: booking) }
+            if booking.bookingStatus == .confirmed { BookingExtras(booking: booking, showCalendar: !hideCalendar) }
         }
     }
 
