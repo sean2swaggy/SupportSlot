@@ -18,8 +18,6 @@
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
-	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -31,14 +29,20 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Support Slot uses your location only when you tap “Use my current location”, to fill in the town you’re in. It isn’t tracked, and your exact position isn’t stored — it’s rounded to about 1 km.</string>
-	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
-	<string>Support Slot adds a confirmed show to your calendar, with reminders, only when you tap “Add to calendar”. It never reads your other events.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>Support Slot adds a confirmed show to your calendar, with reminders, only when you tap “Add to calendar”. It never reads your other events.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Support Slot uses your location only when you tap “Use my current location”, to fill in the town you’re in. It isn’t tracked, and your exact position isn’t stored — it’s rounded to about 1 km.</string>
+	<key>SupabaseAnonKey</key>
+	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>SupabaseHost</key>
+	<string>$(SUPABASE_HOST)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -59,9 +63,5 @@
 	</array>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
-	<key>SupabaseHost</key>
-	<string>$(SUPABASE_HOST)</string>
-	<key>SupabaseAnonKey</key>
-	<string>$(SUPABASE_ANON_KEY)</string>
 </dict>
 </plist>
