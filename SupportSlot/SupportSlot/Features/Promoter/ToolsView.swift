@@ -18,6 +18,16 @@ struct ToolsView: View {
                     DisplayTitle("Tools", size: 34)
                     Text("Organise your shows and your artist relationships. Artists never see your roster, notes or schedules.").dimBody(14)
                 }
+                NavigationLink { TeamView() } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "person.2").font(.system(size: 18)).foregroundStyle(Theme.acid).frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) { Text("Build a team").font(Theme.body(16, weight: .medium)).foregroundStyle(Theme.paper); Text("Invite people to help you book").font(Theme.body(12)).foregroundStyle(Theme.paperDim) }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Theme.paperDim)
+                    }
+                    .padding(16).frame(maxWidth: .infinity, alignment: .leading).background(Theme.inkCard).overlay(Rectangle().stroke(Theme.inkBorder, lineWidth: 1)).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
                 tool("Artist roster", "Artists you’ve saved, with notes and tags", "star") { RosterView() }
                 tool("Availability requests", "Ask roster artists if they’re free before you commit", "calendar.badge.questionmark") { PromoterRequestsView() }
                 tool("Request templates", "Reuse a show’s details in your next request", "doc.on.doc") { TemplatesView() }

@@ -102,8 +102,10 @@ extension Database {
         return try await select(Query("slots", Slot.columns).in("id", ids))
     }
 
-    func promoterSlots(promoterId: ID) async throws -> [Slot] {
-        try await select(Query("slots", Slot.columns).eq("promoter_id", promoterId).order("posted_at", ascending: false))
+    /// A promoter's own listings and, when they're on a team, the team owner's too.
+    func promoterSlots(promoterIds: [ID]) async throws -> [Slot] {
+        if promoterIds.isEmpty { return [] }
+        return try await select(Query("slots", Slot.columns).in("promoter_id", promoterIds).order("posted_at", ascending: false))
     }
 
     // MARK: Applications and bookings
@@ -190,10 +192,11 @@ extension Database {
 
     /// The signed-in person's conversations, newest activity first, each with
     /// its latest message (for the preview and the unread dot).
-    func chatThreads(viewerRole: UserRole, viewerId: ID) async throws -> [ChatThread] {
-        let column = viewerRole == .artist ? "artist_id" : "promoter_id"
+    func chatThreads(viewerRole: UserRole, viewerId: ID, teamOwnerIds: [ID] = []) async throws -> [ChatThread] {
+        let base = Query("message_threads", MessageThreadRow.columns)
+        let filtered = viewerRole == .artist ? base.eq("artist_id", viewerId) : base.in("promoter_id", [viewerId] + teamOwnerIds)
         let rows: [MessageThreadRow] = try await select(
-            Query("message_threads", MessageThreadRow.columns).eq(column, viewerId).order("last_message_at", ascending: false, nullsLast: true).limit(100))
+            filtered.order("last_message_at", ascending: false, nullsLast: true).limit(100))
         if rows.isEmpty { return [] }
 
         // The latest messages across all of the person's threads, newest first.

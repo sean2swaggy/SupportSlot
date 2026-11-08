@@ -15,6 +15,8 @@ struct ListingFormView: View {
     @State private var venues: [Venue] = []
     @State private var venuesError: AppError?
     @State private var showPreview = false
+    /// Who the listing is posted for. Only matters when the promoter is on a team.
+    @State private var postAs: ID?
     @State private var pickingVenue = false
     @State private var submitted = false          // show field errors after the first attempt
     @State private var error: String?
@@ -101,6 +103,15 @@ struct ListingFormView: View {
             }
             if let venuesError { ErrorState(error: venuesError) { Task { await loadVenues() } } }
 
+            if editing == nil, let owner = store.team.first(where: { $0.memberId == store.userId && $0.isActive }) {
+                LabeledField(label: "Post as") {
+                    Picker("Post as", selection: Binding(get: { postAs ?? owner.promoterId }, set: { postAs = $0 })) {
+                        Text("\(owner.ownerName) (your team)").tag(owner.promoterId)
+                        Text("Me").tag(store.userId ?? "")
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
             LabeledField(label: "Headliner / show name", error: show(.headliner)) {
                 TextField("Who’s headlining?", text: $draft.headliner).fieldStyle(invalid: show(.headliner) != nil)
             }
@@ -214,12 +225,15 @@ struct ListingFormView: View {
                 publishedId = editing.id
             } else {
                 guard let uid = store.userId else { error = AppError.sessionExpired.message; return }
-                let open = store.myListings.filter { $0.slotStatus == .open }.count
-                guard PlanRules.canPostAnother(openListings: open, hasTeam: purchases.hasTeam) else {
+                // A team member posts for the team's owner by default; the owner's Team plan covers it.
+                let owner = postAs ?? store.teamOwnerIds.first ?? uid
+                let forTeam = owner != uid
+                let open = store.myListings.filter { $0.slotStatus == .open && $0.promoterId == owner }.count
+                guard forTeam || PlanRules.canPostAnother(openListings: open, hasTeam: purchases.hasTeam) else {
                     error = "The free plan has \(PlanRules.freeLiveListings) open listing at a time. Close or fill it first, or get the Team plan."
                     return
                 }
-                publishedId = try await store.perform { try await store.db.createListing(promoterId: uid, draft, headlinerImage: headlinerImage, artistPhoto: artistPhoto) }
+                publishedId = try await store.perform { try await store.db.createListing(promoterId: owner, draft, headlinerImage: headlinerImage, artistPhoto: artistPhoto) }
             }
         } catch { self.error = (error as? AppError)?.message ?? "We couldn’t save your listing." }
     }

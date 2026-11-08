@@ -6,6 +6,8 @@ struct MyGigsView: View {
     @Environment(PurchaseStore.self) private var purchases
     @State private var showPaywall = false
 
+    /// Open listings that are mine (not a team owner's), which is what the free-plan limit counts.
+    private var myOpenCount: Int { store.myListings.filter { $0.slotStatus == .open && $0.promoterId == store.userId }.count }
     private var openCount: Int { store.myListings.filter { $0.slotStatus == .open }.count }
     private var toReview: Int { store.applications.filter { [.submitted, .viewed].contains($0.applicationStatus) }.count }
     private var shortlisted: Int { store.applications.filter { $0.applicationStatus == .shortlisted }.count }
@@ -18,7 +20,7 @@ struct MyGigsView: View {
                     Eyebrow(store.promoter?.company ?? "Your gigs")
                     DisplayTitle("My gigs", size: 34)
                 }
-                if PlanRules.canPostAnother(openListings: openCount, hasTeam: purchases.hasTeam) {
+                if store.isTeamMember || PlanRules.canPostAnother(openListings: myOpenCount, hasTeam: purchases.hasTeam) {
                     NavigationLink { ListingFormView() } label: { Label("Post a support slot", systemImage: "plus") }.buttonStyle(.appPrimary)
                 } else {
                     Button { showPaywall = true } label: { Label("Post another slot", systemImage: "lock") }.buttonStyle(.appPrimary)
@@ -29,13 +31,15 @@ struct MyGigsView: View {
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     stat("Open listings", openCount)
-                    stat("To review", toReview)
-                    stat("Shortlisted", shortlisted)
-                    stat("Booked", booked)
+                    statLink("To review", toReview, .toReview)
+                    statLink("Shortlisted", shortlisted, .shortlisted)
+                    statLink("Booked", booked, .booked)
                 }
 
                 if toReview > 0 {
-                    Banner(kind: .info, text: "\(toReview) application\(toReview == 1 ? "" : "s") to review. Open a listing to shortlist, decline or make an offer.")
+                    NavigationLink { ApplicationsOverviewView(filter: .toReview) } label: {
+                        Banner(kind: .info, text: "\(toReview) application\(toReview == 1 ? "" : "s") to review. Tap to see who applied.")
+                    }.buttonStyle(.plain)
                 }
 
                 MonoLabel("Your listings")
@@ -77,6 +81,12 @@ struct MyGigsView: View {
                 }
             }
         }
+    }
+
+    private func statLink(_ label: String, _ value: Int, _ filter: ApplicationsOverviewView.Filter) -> some View {
+        NavigationLink { ApplicationsOverviewView(filter: filter) } label: { stat(label, value) }
+            .buttonStyle(.plain)
+            .accessibilityHint("Shows these applicants")
     }
 
     private func stat(_ label: String, _ value: Int) -> some View {

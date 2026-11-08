@@ -21,9 +21,11 @@ struct ApplicantsView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     header(slot)
                     ListingActionsView(slot: slot) { await reload() }
-                    NavigationLink { if purchases.hasTeam { ShowScheduleView(slot: slot) } else { PaywallScreen(feature: .team) } } label: {
-                        Label("Show schedule", systemImage: purchases.hasTeam ? "list.bullet.rectangle" : "lock")
-                    }.buttonStyle(.appOutline)
+                    if slot.promoterId == store.userId {   // schedules stay with the listing's owner
+                        NavigationLink { if purchases.hasTeam { ShowScheduleView(slot: slot) } else { PaywallScreen(feature: .team) } } label: {
+                            Label("Show schedule", systemImage: purchases.hasTeam ? "list.bullet.rectangle" : "lock")
+                        }.buttonStyle(.appOutline)
+                    }
                     if slot.slotStatus != .open && slot.slotStatus != .filled {
                         Banner(kind: .info, text: slot.slotStatus == .closed ? "Applications are closed. Existing applicants keep their status and you can still make offers." : "This listing was cancelled.")
                     }
@@ -340,7 +342,8 @@ struct ListingActionsView: View {
 
     private func reopen() async {
         error = nil
-        if !PlanRules.canPostAnother(openListings: store.myListings.filter { $0.slotStatus == .open }.count, hasTeam: purchases.hasTeam) {
+        let forTeam = slot.promoterId != store.userId
+        if !forTeam && !PlanRules.canPostAnother(openListings: store.myListings.filter { $0.slotStatus == .open && $0.promoterId == slot.promoterId }.count, hasTeam: purchases.hasTeam) {
             showPaywall = true; return
         }
         do { try await store.perform { try await store.db.reopenSlot(id: slot.id) }; await onChanged() }

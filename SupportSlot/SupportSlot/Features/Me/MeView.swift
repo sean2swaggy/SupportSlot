@@ -85,6 +85,7 @@ struct MeView: View {
     @ViewBuilder private var promoterSection: some View {
         if let promoter = store.promoter {
             row("Your details", detail: promoter.location ?? "", icon: "building.2") { PromoterDetailsView(promoter: promoter) }
+            row("Build a team", detail: store.isTeamMember ? "You’re on a team" : (store.teamInvitesForMe.isEmpty ? "Invite people to help book" : "You have an invitation"), icon: "person.2") { TeamView() }
         }
     }
 

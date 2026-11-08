@@ -49,13 +49,21 @@ struct ChatThread: Identifiable, Equatable, Hashable {
         return c
     }
 
+    /// Whether a message came from the viewer's side. For a promoter that includes their team
+    /// (anyone who isn't the artist), so the owner and their helpers see one shared conversation.
+    func isFromViewerSide(_ senderId: ID) -> Bool {
+        if viewerRole == .artist { return senderId == viewerId }
+        if let artist = row.artists?.id { return senderId != artist }
+        return senderId == viewerId
+    }
+
     var preview: String {
         guard let latest else { return "No messages yet" }
-        return (latest.senderId == viewerId ? "You: " : "") + latest.text
+        return (isFromViewerSide(latest.senderId) ? "You: " : "") + latest.text
     }
 
     var unread: Bool {
-        guard let latest, latest.senderId != viewerId else { return false }
+        guard let latest, !isFromViewerSide(latest.senderId) else { return false }
         let lastRead = viewerRole == .artist ? row.artistLastReadAt : row.promoterLastReadAt
         return lastRead == nil || latest.createdAt > lastRead!
     }

@@ -65,6 +65,12 @@ struct MainShell: View {
         .sheet(item: Binding(get: { store.presentedSlotID.map(SlotRoute.init) }, set: { store.presentedSlotID = $0?.id })) { route in
             NavigationStack { SlotDetailView(slotId: route.id) }.environment(store).environment(purchases).presentationBackground(Theme.ink)
         }
+        .sheet(isPresented: Binding(get: { store.presentedTeam }, set: { store.presentedTeam = $0 })) {
+            NavigationStack {
+                TeamView().toolbar { ToolbarItem(placement: .topBarLeading) { Button("Close") { store.presentedTeam = false } } }
+            }
+            .environment(store).environment(purchases).presentationBackground(Theme.ink)
+        }
         .sheet(item: Binding(get: { store.presentedApplicationID.map(SlotRoute.init) }, set: { store.presentedApplicationID = $0?.id })) { route in
             NavigationStack {
                 ApplicationDetailView(applicationId: route.id)

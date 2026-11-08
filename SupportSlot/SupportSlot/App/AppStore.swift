@@ -47,7 +47,8 @@ final class AppStore {
     private(set) var notifications: [AppNotification] = []
     private(set) var threads: [ChatThread] = []
     private(set) var savedSlotIDs: Set<ID> = []
-    private(set) var myListings: [Slot] = []            // promoter only
+    private(set) var myListings: [Slot] = []            // promoter only: own listings plus the team owner's
+    private(set) var team: [TeamRow] = []               // promoter only: invitations and members
     private(set) var loadError: AppError?
     private(set) var hasLoadedOnce = false
 
@@ -107,6 +108,15 @@ final class AppStore {
     }
 
     var userId: ID? { session?.user.id }
+
+    // MARK: Teams
+    /// The owners whose team I'm an active member of (at most one).
+    var teamOwnerIds: [ID] { guard let uid = userId else { return [] }; return team.filter { $0.memberId == uid && $0.isActive }.map(\.promoterId) }
+    var isTeamMember: Bool { !teamOwnerIds.isEmpty }
+    var teamInvitesForMe: [TeamRow] { guard let uid = userId else { return [] }; return team.filter { $0.memberId == uid && !$0.isActive } }
+    var myTeamRows: [TeamRow] { guard let uid = userId else { return [] }; return team.filter { $0.promoterId == uid } }
+    /// Set when a team notification is tapped; the main screen shows the team page.
+    var presentedTeam = false
     var role: UserRole { (profile?.userRole ?? account.flatMap { UserRole(rawValue: $0.role) }) ?? .artist }
     var isSignedIn: Bool { session != nil }
     var accountEmail: String? { session?.user.email ?? profile?.email }
@@ -189,10 +199,12 @@ final class AppStore {
             let profile = try await loadProfile(uid)
             self.profile = profile
             let role = profile.userRole
+            if role == .promoter, let rows = try? await db.teamOverview() { self.team = rows }
+            let ownerIds = teamOwnerIds
             async let notifications = db.notifications(profileId: uid)
             async let saved = db.savedSlotIDs(profileId: uid)
             async let bookings = db.myBookings()
-            async let threads = db.chatThreads(viewerRole: role, viewerId: uid)
+            async let threads = db.chatThreads(viewerRole: role, viewerId: uid, teamOwnerIds: ownerIds)
 
             switch role {
             case .artist:
@@ -205,7 +217,7 @@ final class AppStore {
             case .promoter:
                 async let promoter = db.promoter(id: uid)
                 async let apps = db.promoterApplications()
-                async let listings = db.promoterSlots(promoterId: uid)
+                async let listings = db.promoterSlots(promoterIds: [uid] + ownerIds)
                 self.promoter = try await promoter
                 self.applications = try await apps
                 self.myListings = try await listings
@@ -242,7 +254,7 @@ final class AppStore {
 
     func refreshThreads() async {
         guard let uid = userId, isConfigured, profile?.hasOnboarded == true else { return }
-        if let t = try? await db.chatThreads(viewerRole: role, viewerId: uid) { threads = t }
+        if let t = try? await db.chatThreads(viewerRole: role, viewerId: uid, teamOwnerIds: teamOwnerIds) { threads = t }
     }
 
     func refreshNotifications() async {
@@ -300,6 +312,7 @@ final class AppStore {
         guard let href, !href.isEmpty else { return }
         let path = href.split(separator: "?").first.map(String.init) ?? href
         if path.hasPrefix("/slot/") { presentedSlotID = String(path.dropFirst("/slot/".count)); return }
+        if path == "/team" { presentedTeam = true; return }
         if path.hasPrefix("/application/") {
             let id = String(path.dropFirst("/application/".count))
             if role == .artist { presentedApplicationID = id } else { selectedTab = .myGigs }

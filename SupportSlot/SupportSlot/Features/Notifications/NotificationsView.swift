@@ -90,6 +90,7 @@ struct NotificationsView: View {
         case "report_update": return "flag"
         case "review_received": return "star"
         case "saved_search": return "bell.badge"
+        case "team_invite", "team_update": return "person.2"
         default: return "circle.fill"
         }
     }

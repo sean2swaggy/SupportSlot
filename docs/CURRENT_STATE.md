@@ -47,3 +47,10 @@ A mobile-number option (texted code) was built and then removed by the owner's d
 - Enforcement is **on the device** (StoreKit verifies Apple's signed transactions; each purchase is tied to the account via `appAccountToken`). The database does **not** enforce plans: the 1-open-listing limit and locked tools can be bypassed by calling the API directly. Server-side verification (App Store Server Notifications + an edge function writing an entitlements table) is the next hardening step and needs sandbox testing with the Apple account.
 - The Gig diary table (migration 0012) is private to its owner by row-level security whether or not they bought it.
 - "Shared team logins" are **not built**: Team currently means unlimited listings and the promoter tools for one login.
+
+## Promoter teams (migration 0014)
+
+- A promoter invites up to 5 other promoter accounts by email; a person is on at most one team. Everything is decided by `acts_for_promoter(owner)` (owner or an active member). Members can post/edit listings, shortlist/decline, make/withdraw offers, cancel bookings and message artists for the owner. Owner-only: roster, availability requests, templates, schedules, gig invitations, reviews, settings.
+- Inviting needs the Team plan, checked on the device only (the database does not know about purchases). Members post for the owner without their own plan.
+- Notifications still go to the owner only; helpers aren't notified when an artist replies.
+- Not yet verified on a phone with two real accounts.

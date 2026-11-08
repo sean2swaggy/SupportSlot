@@ -161,7 +161,9 @@ struct ChatView: View {
 
     // MARK: Loading
 
-    private func bubble(_ m: Message) -> ChatBubble { ChatBubble(id: m.id, text: m.text, mine: m.senderId == store.userId, date: m.createdAt) }
+    private func bubble(_ m: Message) -> ChatBubble {
+        ChatBubble(id: m.id, text: m.text, mine: thread?.isFromViewerSide(m.senderId) ?? (m.senderId == store.userId), date: m.createdAt)
+    }
 
     private func loadLatest() async {
         do {

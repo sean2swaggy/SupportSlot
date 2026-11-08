@@ -189,7 +189,7 @@ struct InviteToGigSheet: View {
     @State private var error: String?
     @State private var done = false
 
-    private var openGigs: [Slot] { store.myListings.filter { $0.slotStatus == .open && !UKDates.deadlinePassed($0.applicationDeadline) && UKDates.daysUntil($0.date) >= 0 } }
+    private var openGigs: [Slot] { store.myListings.filter { $0.promoterId == store.userId && $0.slotStatus == .open && !UKDates.deadlinePassed($0.applicationDeadline) && UKDates.daysUntil($0.date) >= 0 } }
 
     var body: some View {
         ScrollView {
