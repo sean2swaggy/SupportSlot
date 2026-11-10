@@ -30,6 +30,20 @@ struct VerifiedBadge: View {
     }
 }
 
+/// A small filled mark for the person who founded Support Slot. Set by the platform only.
+struct FounderBadge: View {
+    var body: some View {
+        Label("Founder", systemImage: "star.fill")
+            .labelStyle(.titleAndIcon)
+            .font(Theme.mono(10, weight: .bold))
+            .textCase(.uppercase)
+            .foregroundStyle(Theme.acidInk)
+            .padding(.horizontal, 6).padding(.vertical, 3)
+            .background(Theme.acid)
+            .accessibilityLabel("Founder of Support Slot")
+    }
+}
+
 /// Says in plain words what the badge means. Shown on profile pages (not inside tappable rows).
 struct VerifiedExplainer: View {
     var body: some View {

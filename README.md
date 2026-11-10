@@ -31,7 +31,7 @@ SupportSlot/                 Xcode project (SupportSlot.xcodeproj) and sources
   SupportSlot/Features/      Screens by area (Auth, Discover, Promoter, Staff…)
   SupportSlotTests/          XCTest unit tests (stubbed network)
   Config/                    Base.xcconfig, Secrets.example.xcconfig, Info.plist
-supabase/migrations/         0001–0009: schema, app functions, session security, UK locations, data export, function search paths, password-only sign-in (0008/0009: a phone option added then removed again)
+supabase/migrations/         0001–0015 (see supabase/sql-editor/README.txt for the list); 0001–0009: schema, app functions, session security, UK locations, data export, function search paths, password-only sign-in (0008/0009: a phone option added then removed again)
 supabase/sql-editor/         the same files, for pasting into the Supabase SQL editor
 tests/db/                    Postgres tests: real migrations in-process (PGlite)
 scripts/                     Live checks and demo-data scripts (Node)

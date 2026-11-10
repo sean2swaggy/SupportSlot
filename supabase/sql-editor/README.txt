@@ -15,6 +15,7 @@ empty project. Wait for "Success. No rows returned" before the next one.
  12. 0012_gig_diary.sql                       (the artist Gig diary)
  13. 0013_offer_message_and_notification_links.sql  (offer message in Messages; exact notification links)
  14. 0014_promoter_teams.sql                  (Build a team: invites and shared booking rules)
+ 15. 0015_founder_badge.sql                    (Founder badge on a profile, platform-set only)
 
 Each file runs once. If one fails, copy the red error text and the file name; do not
 re-run the files before it. These are byte-for-byte copies of ../migrations/ (a test

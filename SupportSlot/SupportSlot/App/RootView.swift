@@ -12,6 +12,7 @@ struct RootView: View {
     @State private var previewBooking: Booking?
     @State private var previewSent = false
     @State private var previewAccepted = false
+    @State private var previewFounder = false
     #endif
 
     var body: some View {
@@ -62,6 +63,14 @@ struct RootView: View {
             if CommandLine.arguments.contains("-previewBooked") { previewBooking = PreviewData.booking }
         }
         .sheet(item: $previewBooking) { BookedCelebrationSheet(booking: $0) }
+        .task { if CommandLine.arguments.contains("-previewFounder") { previewFounder = true } }
+        .sheet(isPresented: $previewFounder) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 8) { Text("ChanelSalvia").font(Theme.display(24)).foregroundStyle(Theme.paper); FounderBadge() }
+                HStack(spacing: 8) { Tag("Artist", tint: Theme.acid); FounderBadge(); VerifiedBadge() }
+            }
+            .padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).background(Theme.ink).presentationBackground(Theme.ink)
+        }
         .task { if CommandLine.arguments.contains("-previewAccepted") { previewAccepted = true } }
         .sheet(isPresented: $previewAccepted) {
             OfferAcceptedBanner(artistName: "The Artist").padding(20)

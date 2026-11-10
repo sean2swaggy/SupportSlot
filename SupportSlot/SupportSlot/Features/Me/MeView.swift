@@ -27,7 +27,7 @@ struct MeView: View {
             Avatar(imageUrl: store.ownImage, name: store.displayName, size: 72)
             VStack(alignment: .leading, spacing: 6) {
                 Text(store.displayName).font(Theme.display(24)).foregroundStyle(Theme.paper).lineLimit(2)
-                HStack(spacing: 8) { Tag(store.role.title, tint: Theme.acid); if (store.artist?.isVerified ?? store.promoter?.isVerified) == true { VerifiedBadge() } }
+                HStack(spacing: 8) { Tag(store.role.title, tint: Theme.acid); if store.artist?.founder == true { FounderBadge() }; if (store.artist?.isVerified ?? store.promoter?.isVerified) == true { VerifiedBadge() } }
                 if let u = store.profile?.username { Text("@\(u)").font(Theme.mono(12)).foregroundStyle(Theme.paperDim) }
             }
         }

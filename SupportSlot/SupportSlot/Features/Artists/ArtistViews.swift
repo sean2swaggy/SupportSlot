@@ -24,7 +24,7 @@ struct ArtistRow: View {
         HStack(spacing: 14) {
             Avatar(imageUrl: artist.imageUrl, name: artist.name, size: 56)
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) { Text(artist.name).font(Theme.display(18)).foregroundStyle(Theme.paper).lineLimit(1); if artist.isVerified { VerifiedBadge() } }
+                HStack(spacing: 6) { Text(artist.name).font(Theme.display(18)).foregroundStyle(Theme.paper).lineLimit(1); if artist.founder { FounderBadge() }; if artist.isVerified { VerifiedBadge() } }
                 Text("\(artist.location) · \(Catalog.artistSizeLabel(artist.artistSize))").font(Theme.body(13)).foregroundStyle(Theme.paperDim)
                 FlowLayout(spacing: 4) { ForEach(artist.genres.prefix(3), id: \.self) { Tag($0) } }
             }
@@ -86,7 +86,7 @@ struct ArtistProfileView: View {
                     Avatar(imageUrl: a.imageUrl, name: a.name, size: 84)
                     VStack(alignment: .leading, spacing: 6) {
                         DisplayTitle(a.name, size: 28)
-                        if a.isVerified { VerifiedBadge() }
+                        HStack(spacing: 8) { if a.founder { FounderBadge() }; if a.isVerified { VerifiedBadge() } }
                     }
                 }
                 .padding(.top, -60)

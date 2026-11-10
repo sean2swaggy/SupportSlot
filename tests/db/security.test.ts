@@ -141,3 +141,31 @@ describe("application integrity", () => {
     ).rejects.toThrow(/not_authorized/);
   });
 });
+
+describe("founder badge", () => {
+  it("an artist cannot give themselves the founder badge, by update or by sign-up", async () => {
+    const artist = await makeArtist(db);
+    await expect(
+      asUser(db, artist, (tx) => tx.query(`update public.artists set is_founder = true where id = $1`, [artist]))
+    ).rejects.toThrow(/can only be changed by the platform/);
+    const { signUp } = await import("./harness");
+    const id = await signUp(db, "artist");
+    await expect(
+      asUser(db, id, (tx) =>
+        tx.query(
+          `insert into public.artists (id, handle, name, location, genres, bio, spotify_url, instagram_url, availability, is_founder) values ($1, $2, 'X', 'London', '{}', '', '', '', 'open', true)`,
+          [id, `founder-${id.slice(0, 8)}`]
+        )
+      )
+    ).rejects.toThrow();
+  });
+
+  it("the platform can set it, and an artist can still edit their own profile around it", async () => {
+    const artist = await makeArtist(db);
+    await db.query(`update public.artists set is_founder = true where id = $1`, [artist]);
+    const rows = (await asUser(db, artist, (tx) =>
+      tx.query(`update public.artists set bio = 'Hello' where id = $1 returning is_founder, bio`, [artist])
+    )).rows;
+    expect(rows).toEqual([{ is_founder: true, bio: "Hello" }]);
+  });
+});

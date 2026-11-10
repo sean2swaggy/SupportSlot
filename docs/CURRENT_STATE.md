@@ -54,3 +54,9 @@ A mobile-number option (texted code) was built and then removed by the owner's d
 - Inviting needs the Team plan, checked on the device only (the database does not know about purchases). Members post for the owner without their own plan.
 - Notifications still go to the owner only; helpers aren't notified when an artist replies.
 - Not yet verified on a phone with two real accounts.
+
+## Founder badge (migration 0015)
+
+- `artists.is_founder` shows a "Founder" tag next to a name (profile, cards, applicants, Me tab). It is set by hand in SQL only: the app can read it, and a trigger refuses any change from a signed-in client. It affects nothing else (booking, ranking and visibility are untouched).
+- To set it: `begin; set local app.staff_bypass = '1'; update public.artists set is_founder = true where id = '…'; commit;` (plain SQL without the bypass line is refused too).
+- Applied live on 10 Nov 2026 and set on the `chanelsalvia` account.

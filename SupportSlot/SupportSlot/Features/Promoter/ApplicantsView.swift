@@ -121,6 +121,7 @@ struct ApplicantCard: View {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
                         Text(artist?.name ?? "Artist").font(Theme.display(19)).foregroundStyle(Theme.paper)
+                        if artist?.founder == true { FounderBadge() }
                         if artist?.isVerified == true { VerifiedBadge() }
                     }
                     if let artist { Text("\(artist.location) · \(Catalog.artistSizeLabel(artist.artistSize))").font(Theme.body(13)).foregroundStyle(Theme.paperDim) }
